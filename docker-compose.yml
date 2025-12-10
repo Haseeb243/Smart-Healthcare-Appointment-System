@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: healthcare-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - healthcare-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: healthcare-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - healthcare-network
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: healthcare-auth-service
+    ports:
+      - "4001:4001"
+    environment:
+      - PORT=4001
+      - MONGODB_URI=mongodb://mongodb:27017/healthcare-auth
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - FRONTEND_URL=http://localhost:3000
+      - NODE_ENV=development
+    depends_on:
+      - mongodb
+    networks:
+      - healthcare-network
+
+  appointment-service:
+    build:
+      context: ./backend/appointment-service
+      dockerfile: Dockerfile
+    container_name: healthcare-appointment-service
+    ports:
+      - "4002:4002"
+    environment:
+      - PORT=4002
+      - MONGODB_URI=mongodb://mongodb:27017/healthcare-appointments
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - REDIS_URL=redis://redis:6379
+      - FRONTEND_URL=http://localhost:3000
+      - NODE_ENV=development
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - healthcare-network
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: Dockerfile
+    container_name: healthcare-notification-service
+    ports:
+      - "4003:4003"
+    environment:
+      - PORT=4003
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=development
+    depends_on:
+      - redis
+    networks:
+      - healthcare-network
+
+networks:
+  healthcare-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
