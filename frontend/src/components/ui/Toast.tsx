@@ -97,7 +97,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const showToast = useCallback((message: string, type: ToastType) => {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).slice(2, 11);
     setToasts((prev) => [...prev, { id, message, type }]);
   }, []);
 
@@ -109,8 +109,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ showToast }}>
       {children}
       <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map((toast, index) => (
-          <div key={toast.id} style={{ transform: `translateY(${index * 10}px)` }}>
+        {toasts.map((toast) => (
+          <div key={toast.id}>
             <Toast
               message={toast.message}
               type={toast.type}
