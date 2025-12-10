@@ -1,0 +1,16 @@
+Develop a Smart Healthcare Appointment System where patients book appointments and doctors
+manage schedules.
+You must implement Frontend + Backend using Microservices and Event-Driven Architecture
+with proper security.
+Requirements
+• Frontend: Next.js (protected dashboards for doctor & patient)
+• Backend: Minimum 3 microservices
+o   Auth/User Service
+    Appointment Service
+    Notification Service (triggered by events)
+• Event Driven:
+    Booking/approval must emit events and Notification Service must respond.
+• Security:
+     HttpOnly cookies, protected routes with middleware, no secrets on frontend.
+• Database: SQL or NoSQL (your choice).
+• Deployment: Must be deployed (Vercel).
