@@ -3,21 +3,28 @@ const nodemailer = require('nodemailer');
 // Create reusable transporter object using SMTP transport
 let transporter = null;
 
+/**
+ * Initialize the email service with SMTP configuration.
+ * 
+ * SECURITY NOTE: In production, use a secrets management service 
+ * (AWS Secrets Manager, HashiCorp Vault, etc.) instead of plain 
+ * environment variables for SMTP credentials.
+ */
 const initEmailService = () => {
-  // Use Gmail SMTP
+  // Use Gmail SMTP - requires App Password for Gmail accounts with 2FA enabled
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: false, // true for 465, false for other ports
     auth: {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS // Use App Password for Gmail
+      pass: process.env.SMTP_PASS
     }
   });
 
   // Verify connection configuration
   if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    transporter.verify((error, success) => {
+    transporter.verify((error) => {
       if (error) {
         console.log('Email service configuration error:', error.message);
         console.log('Email notifications will be logged only.');

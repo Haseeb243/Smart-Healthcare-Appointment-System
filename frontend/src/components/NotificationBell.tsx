@@ -54,11 +54,15 @@ export default function NotificationBell() {
       setNotifications(prev => {
         const existingIds = new Set(prev.map(n => n._id));
         const newNotifications = socketNotifications.filter(n => !existingIds.has(n._id));
-        return [...newNotifications, ...prev];
+        if (newNotifications.length > 0) {
+          // Only increment unread count for truly new notifications
+          setUnreadCount(prevCount => prevCount + newNotifications.filter(n => !n.read).length);
+          return [...newNotifications, ...prev];
+        }
+        return prev;
       });
-      setUnreadCount(prev => prev + socketUnreadCount);
     }
-  }, [socketNotifications, socketUnreadCount]);
+  }, [socketNotifications]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

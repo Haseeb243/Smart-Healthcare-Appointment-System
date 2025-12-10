@@ -64,15 +64,30 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const typingCallbacks = useRef<Set<(data: { userName: string }) => void>>(new Set());
   const stopTypingCallbacks = useRef<Set<() => void>>(new Set());
   const appointmentUpdateCallbacks = useRef<Set<(data: { status: string; type: string }) => void>>(new Set());
+  
+  // Store user ID ref for stable connection management
+  const userIdRef = useRef<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (!user?._id) {
-      // Clean up socket if user logs out
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
+    const currentUserId = user?._id || null;
+    
+    // Only reconnect if user ID actually changed (login/logout)
+    if (userIdRef.current === currentUserId && socketRef.current?.connected) {
+      return;
+    }
+    
+    userIdRef.current = currentUserId;
+    
+    // Clean up existing socket if any
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+      setIsConnected(false);
+    }
+    
+    if (!currentUserId) {
       return;
     }
 
@@ -80,13 +95,20 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const newSocket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
+
+    socketRef.current = newSocket;
 
     newSocket.on('connect', () => {
       console.log('Socket connected:', newSocket.id);
       setIsConnected(true);
       // Register user with socket
-      newSocket.emit('register', user._id);
+      if (userIdRef.current) {
+        newSocket.emit('register', userIdRef.current);
+      }
     });
 
     newSocket.on('disconnect', () => {
@@ -120,7 +142,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     setSocket(newSocket);
 
     return () => {
-      newSocket.disconnect();
+      if (newSocket) {
+        newSocket.disconnect();
+      }
     };
   }, [user?._id]);
 
