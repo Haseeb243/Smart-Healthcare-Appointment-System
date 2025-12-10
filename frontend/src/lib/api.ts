@@ -2,6 +2,20 @@
 export const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4001/api';
 export const APPOINTMENT_API_URL = process.env.NEXT_PUBLIC_APPOINTMENT_API_URL || 'http://localhost:4002/api';
 
+// Helper function to safely parse JSON error response
+async function parseErrorResponse(response: Response, defaultMessage: string): Promise<string> {
+  try {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const error = await response.json();
+      return error.message || defaultMessage;
+    }
+    return defaultMessage;
+  } catch {
+    return defaultMessage;
+  }
+}
+
 // Auth API functions
 export async function login(email: string, password: string) {
   const response = await fetch(`${AUTH_API_URL}/auth/login`, {
@@ -14,8 +28,8 @@ export async function login(email: string, password: string) {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Login failed');
+    const message = await parseErrorResponse(response, 'Login failed');
+    throw new Error(message);
   }
   
   return response.json();
@@ -39,8 +53,8 @@ export async function register(data: {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Registration failed');
+    const message = await parseErrorResponse(response, 'Registration failed');
+    throw new Error(message);
   }
   
   return response.json();
@@ -104,8 +118,8 @@ export async function createAppointment(data: {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create appointment');
+    const message = await parseErrorResponse(response, 'Failed to create appointment');
+    throw new Error(message);
   }
   
   return response.json();
@@ -146,8 +160,8 @@ export async function approveAppointment(id: string, notes?: string) {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to approve appointment');
+    const message = await parseErrorResponse(response, 'Failed to approve appointment');
+    throw new Error(message);
   }
   
   return response.json();
@@ -164,8 +178,8 @@ export async function cancelAppointment(id: string, notes?: string) {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to cancel appointment');
+    const message = await parseErrorResponse(response, 'Failed to cancel appointment');
+    throw new Error(message);
   }
   
   return response.json();
@@ -182,8 +196,8 @@ export async function completeAppointment(id: string, notes?: string) {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to complete appointment');
+    const message = await parseErrorResponse(response, 'Failed to complete appointment');
+    throw new Error(message);
   }
   
   return response.json();

@@ -3,12 +3,23 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const appointmentRoutes = require('./routes/appointments');
 const { initEventPublisher } = require('./events/publisher');
 
 const app = express();
 
+// Rate limiting configuration
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { message: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Middleware
+app.use(limiter); // Apply rate limiting to all routes
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
