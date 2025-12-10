@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
-  title: "Smart Healthcare Appointment System",
-  description: "Book and manage healthcare appointments",
+  title: "HealthCare+ | Smart Healthcare Appointment System",
+  description: "Book and manage healthcare appointments with ease. Connect with top doctors and manage your health journey effortlessly.",
 };
 
 export default function RootLayout({
@@ -15,12 +16,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased bg-gray-50 font-sans">
+      <body className="antialiased font-sans">
         <AuthProvider>
-          <Navbar />
-          <main className="min-h-screen">
-            {children}
-          </main>
+          <ToastProvider>
+            <Navbar />
+            <main>
+              {children}
+            </main>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

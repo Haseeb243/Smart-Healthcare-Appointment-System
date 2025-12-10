@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment } from '@/lib/api';
+import { Card, CardBody, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, TextArea, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { MedicalIcons } from '@/components/ui/Icons';
+import { useToast } from '@/components/ui/Toast';
 
 interface Appointment {
   _id: string;
@@ -16,9 +23,16 @@ interface Appointment {
 }
 
 export default function DoctorDashboard() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'all' | 'completed'>('today');
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     loadAppointments();
@@ -30,174 +44,467 @@ export default function DoctorDashboard() {
       setAppointments(response.appointments || []);
     } catch (error) {
       console.error('Error loading appointments:', error);
+      showToast('Failed to load appointments', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleApprove = async (id: string) => {
+    setActionLoading(true);
     try {
       await approveAppointment(id);
+      showToast('Appointment approved successfully!', 'success');
       loadAppointments();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to approve appointment');
+      showToast(error instanceof Error ? error.message : 'Failed to approve appointment', 'error');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleCancel = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this appointment?')) return;
-    
+    setActionLoading(true);
     try {
       await cancelAppointment(id);
+      showToast('Appointment cancelled', 'success');
       loadAppointments();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to cancel appointment');
+      showToast(error instanceof Error ? error.message : 'Failed to cancel appointment', 'error');
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleComplete = async (id: string) => {
+  const handleComplete = async () => {
+    if (!selectedAppointment) return;
+    setActionLoading(true);
     try {
-      await completeAppointment(id);
+      await completeAppointment(selectedAppointment._id, notes);
+      showToast('Appointment marked as completed!', 'success');
+      setShowNotesModal(false);
+      setSelectedAppointment(null);
+      setNotes('');
       loadAppointments();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to complete appointment');
+      showToast(error instanceof Error ? error.message : 'Failed to complete appointment', 'error');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const filteredAppointments = appointments.filter(apt => {
-    if (filter === 'all') return true;
-    return apt.status === filter;
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'approved': return '✅';
+      case 'cancelled': return '❌';
+      case 'completed': return '🎉';
+      default: return '📋';
+    }
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+  
+  const todayAppointments = appointments.filter(apt => {
+    const aptDate = new Date(apt.date).toISOString().split('T')[0];
+    return aptDate === today && (apt.status === 'pending' || apt.status === 'approved');
   });
+
+  const upcomingAppointments = appointments.filter(apt => {
+    const aptDate = new Date(apt.date).toISOString().split('T')[0];
+    return aptDate > today && (apt.status === 'pending' || apt.status === 'approved');
+  });
+
+  const completedAppointments = appointments.filter(apt => apt.status === 'completed');
+
+  const getFilteredAppointments = () => {
+    let filtered = appointments;
+    
+    switch (activeTab) {
+      case 'today':
+        filtered = todayAppointments;
+        break;
+      case 'upcoming':
+        filtered = upcomingAppointments;
+        break;
+      case 'completed':
+        filtered = completedAppointments;
+        break;
+      default:
+        filtered = appointments;
+    }
+
+    if (filter !== 'all') {
+      filtered = filtered.filter(apt => apt.status === filter);
+    }
+
+    return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
 
   const stats = {
     total: appointments.length,
     pending: appointments.filter(a => a.status === 'pending').length,
     approved: appointments.filter(a => a.status === 'approved').length,
     completed: appointments.filter(a => a.status === 'completed').length,
+    today: todayAppointments.length,
   };
+
+  const filteredAppointments = getFilteredAppointments();
 
   return (
     <ProtectedRoute allowedRoles={['doctor']}>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-8">Doctor Dashboard</h1>
-
-        {loading ? (
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+          <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">Welcome, Dr. {user?.name}! 👨‍⚕️</h1>
+                <p className="text-indigo-100 mt-1">
+                  {user?.specialization && `${user.specialization} Specialist • `}
+                  {todayAppointments.length} appointments today
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span className="text-sm">Online</span>
+                </div>
+              </div>
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
-                <p className="text-gray-600 text-sm">Total</p>
-              </div>
-              <div className="bg-yellow-50 p-4 rounded-lg shadow-md text-center">
-                <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
-                <p className="text-gray-600 text-sm">Pending</p>
-              </div>
-              <div className="bg-green-50 p-4 rounded-lg shadow-md text-center">
-                <p className="text-2xl font-bold text-green-600">{stats.approved}</p>
-                <p className="text-gray-600 text-sm">Approved</p>
-              </div>
-              <div className="bg-blue-50 p-4 rounded-lg shadow-md text-center">
-                <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
-                <p className="text-gray-600 text-sm">Completed</p>
-              </div>
-            </div>
+        </div>
 
-            {/* Filter */}
-            <div className="mb-6">
-              <select
-                className="px-4 py-2 border rounded-md"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="all">All Appointments</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="completed">Completed</option>
-              </select>
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
             </div>
+          ) : (
+            <>
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8 -mt-12">
+                {[
+                  { label: 'Today', value: stats.today, icon: '📅', color: 'from-blue-500 to-blue-600' },
+                  { label: 'Total', value: stats.total, icon: '📊', color: 'from-gray-500 to-gray-600' },
+                  { label: 'Pending', value: stats.pending, icon: '⏳', color: 'from-yellow-500 to-amber-600' },
+                  { label: 'Approved', value: stats.approved, icon: '✅', color: 'from-green-500 to-emerald-600' },
+                  { label: 'Completed', value: stats.completed, icon: '🎉', color: 'from-purple-500 to-indigo-600' },
+                ].map((stat, index) => (
+                  <Card key={index} className="overflow-hidden">
+                    <div className={`h-1 bg-gradient-to-r ${stat.color}`}></div>
+                    <CardBody className="text-center py-4">
+                      <div className="text-2xl mb-1">{stat.icon}</div>
+                      <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                      <div className="text-xs text-gray-500">{stat.label}</div>
+                    </CardBody>
+                  </Card>
+                ))}
+              </div>
 
-            {/* Appointments List */}
-            <div className="bg-white rounded-lg shadow-md">
-              {filteredAppointments.length === 0 ? (
-                <p className="p-6 text-gray-500 text-center">No appointments found.</p>
-              ) : (
-                <div className="divide-y">
-                  {filteredAppointments.map((apt) => (
-                    <div key={apt._id} className="p-6">
-                      <div className="flex justify-between items-start flex-wrap gap-4">
-                        <div>
-                          <h3 className="font-semibold text-lg">{apt.patientName}</h3>
-                          <p className="text-gray-600">{apt.patientEmail}</p>
-                          <p className="text-gray-500 mt-2">
-                            <span className="font-medium">Date:</span> {new Date(apt.date).toLocaleDateString()} at {apt.timeSlot}
-                          </p>
-                          <p className="text-gray-500">
-                            <span className="font-medium">Reason:</span> {apt.reason}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(apt.status)}`}>
-                            {apt.status}
-                          </span>
-                          <div className="flex gap-2 mt-2">
+              {/* Quick Action Cards */}
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
+                <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-none">
+                  <CardBody className="py-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-blue-100 text-sm">Pending Requests</p>
+                        <p className="text-4xl font-bold mt-1">{stats.pending}</p>
+                      </div>
+                      <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                        <span className="text-2xl">📋</span>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full mt-4 bg-white text-blue-600 hover:bg-blue-50"
+                      size="sm"
+                      onClick={() => {
+                        setActiveTab('all');
+                        setFilter('pending');
+                      }}
+                    >
+                      Review Requests
+                    </Button>
+                  </CardBody>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white border-none">
+                  <CardBody className="py-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-green-100 text-sm">Today&apos;s Schedule</p>
+                        <p className="text-4xl font-bold mt-1">{stats.today}</p>
+                      </div>
+                      <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                        <span className="text-2xl">🗓️</span>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full mt-4 bg-white text-green-600 hover:bg-green-50"
+                      size="sm"
+                      onClick={() => setActiveTab('today')}
+                    >
+                      View Schedule
+                    </Button>
+                  </CardBody>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white border-none">
+                  <CardBody className="py-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-purple-100 text-sm">Patients Helped</p>
+                        <p className="text-4xl font-bold mt-1">{stats.completed}</p>
+                      </div>
+                      <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                        <span className="text-2xl">💪</span>
+                      </div>
+                    </div>
+                    <Button
+                      className="w-full mt-4 bg-white text-purple-600 hover:bg-purple-50"
+                      size="sm"
+                      onClick={() => setActiveTab('completed')}
+                    >
+                      View History
+                    </Button>
+                  </CardBody>
+                </Card>
+              </div>
+
+              {/* Tabs and Filter */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
+                  {[
+                    { id: 'today', label: "Today's", icon: '📅', count: todayAppointments.length },
+                    { id: 'upcoming', label: 'Upcoming', icon: '⏰', count: upcomingAppointments.length },
+                    { id: 'all', label: 'All', icon: '📋', count: appointments.length },
+                    { id: 'completed', label: 'Completed', icon: '✅', count: completedAppointments.length },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id as typeof activeTab);
+                        setFilter('all');
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all ${
+                        activeTab === tab.id
+                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+                          : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      {tab.label}
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        activeTab === tab.id ? 'bg-white/20' : 'bg-gray-100'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {activeTab === 'all' && (
+                  <Select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    options={[
+                      { value: 'all', label: 'All Statuses' },
+                      { value: 'pending', label: '⏳ Pending' },
+                      { value: 'approved', label: '✅ Approved' },
+                      { value: 'completed', label: '🎉 Completed' },
+                      { value: 'cancelled', label: '❌ Cancelled' },
+                    ]}
+                    className="w-48"
+                  />
+                )}
+              </div>
+
+              {/* Appointments List */}
+              <div className="space-y-4">
+                {filteredAppointments.length === 0 ? (
+                  <Card>
+                    <CardBody className="text-center py-12">
+                      <div className="text-6xl mb-4">
+                        {activeTab === 'today' ? '🌟' : activeTab === 'completed' ? '📜' : '📋'}
+                      </div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                        {activeTab === 'today' ? 'No appointments today' : 
+                         activeTab === 'completed' ? 'No completed appointments yet' : 
+                         'No appointments found'}
+                      </h3>
+                      <p className="text-gray-500">
+                        {activeTab === 'today' ? 'Enjoy your free day!' : 'Your appointments will appear here'}
+                      </p>
+                    </CardBody>
+                  </Card>
+                ) : (
+                  filteredAppointments.map((apt) => (
+                    <Card key={apt._id} hover>
+                      <CardBody>
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                          <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
+                              {apt.patientName.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <h3 className="font-bold text-gray-900 text-lg">{apt.patientName}</h3>
+                                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
+                                  {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500">{apt.patientEmail}</p>
+                              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600 flex-wrap">
+                                <span className="flex items-center gap-1">
+                                  <MedicalIcons.Calendar />
+                                  {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MedicalIcons.Clock />
+                                  {apt.timeSlot}
+                                </span>
+                              </div>
+                              <div className="mt-2 p-3 bg-gray-50 rounded-xl">
+                                <p className="text-sm">
+                                  <span className="font-medium text-gray-700">Reason:</span>{' '}
+                                  <span className="text-gray-600">{apt.reason}</span>
+                                </p>
+                                {apt.notes && (
+                                  <p className="text-sm mt-1">
+                                    <span className="font-medium text-blue-700">Your Notes:</span>{' '}
+                                    <span className="text-blue-600">{apt.notes}</span>
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap">
                             {apt.status === 'pending' && (
                               <>
-                                <button
+                                <Button
+                                  variant="success"
+                                  size="sm"
                                   onClick={() => handleApprove(apt._id)}
-                                  className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                                  isLoading={actionLoading}
                                 >
-                                  Approve
-                                </button>
-                                <button
+                                  ✓ Approve
+                                </Button>
+                                <Button
+                                  variant="danger"
+                                  size="sm"
                                   onClick={() => handleCancel(apt._id)}
-                                  className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
                                 >
-                                  Cancel
-                                </button>
+                                  ✕ Reject
+                                </Button>
                               </>
                             )}
                             {apt.status === 'approved' && (
                               <>
-                                <button
-                                  onClick={() => handleComplete(apt._id)}
-                                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAppointment(apt);
+                                    setShowNotesModal(true);
+                                  }}
                                 >
-                                  Complete
-                                </button>
-                                <button
+                                  ✓ Complete
+                                </Button>
+                                <Button
+                                  variant="danger"
+                                  size="sm"
                                   onClick={() => handleCancel(apt._id)}
-                                  className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
                                 >
                                   Cancel
-                                </button>
+                                </Button>
                               </>
+                            )}
+                            {(apt.status === 'completed' || apt.status === 'cancelled') && (
+                              <span className="text-sm text-gray-500 italic">
+                                {apt.status === 'completed' ? 'Session completed' : 'Appointment was cancelled'}
+                              </span>
                             )}
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      </CardBody>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Complete with Notes Modal */}
+        <Modal
+          isOpen={showNotesModal}
+          onClose={() => {
+            setShowNotesModal(false);
+            setSelectedAppointment(null);
+            setNotes('');
+          }}
+          title="Complete Appointment"
+          size="lg"
+        >
+          <div className="space-y-6">
+            {selectedAppointment && (
+              <div className="p-4 bg-indigo-50 rounded-xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                    {selectedAppointment.patientName.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">{selectedAppointment.patientName}</h3>
+                    <p className="text-sm text-gray-500">
+                      {new Date(selectedAppointment.date).toLocaleDateString()} at {selectedAppointment.timeSlot}
+                    </p>
+                  </div>
                 </div>
-              )}
+              </div>
+            )}
+
+            <TextArea
+              label="Session Notes & Recommendations"
+              placeholder="Add notes about the consultation, diagnosis, prescriptions, or follow-up recommendations..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={6}
+            />
+
+            <div className="flex gap-4">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowNotesModal(false);
+                  setSelectedAppointment(null);
+                  setNotes('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="success"
+                className="flex-1"
+                onClick={handleComplete}
+                isLoading={actionLoading}
+              >
+                Complete Appointment
+              </Button>
             </div>
-          </>
-        )}
+          </div>
+        </Modal>
       </div>
     </ProtectedRoute>
   );

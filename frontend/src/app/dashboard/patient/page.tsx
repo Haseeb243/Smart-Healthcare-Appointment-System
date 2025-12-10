@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDoctors, createAppointment, getPatientAppointments, cancelAppointment } from '@/lib/api';
+import { Card, CardBody, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, TextArea, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { MedicalIcons, specializations } from '@/components/ui/Icons';
+import { useToast } from '@/components/ui/Toast';
 
 interface Doctor {
   _id: string;
@@ -19,6 +25,7 @@ interface Appointment {
   timeSlot: string;
   reason: string;
   status: 'pending' | 'approved' | 'cancelled' | 'completed';
+  notes?: string;
 }
 
 const timeSlots = [
@@ -28,20 +35,21 @@ const timeSlots = [
 
 export default function PatientDashboard() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSpecialization, setFilterSpecialization] = useState('');
+  const [activeTab, setActiveTab] = useState<'doctors' | 'appointments' | 'history'>('doctors');
   const [bookingData, setBookingData] = useState({
-    doctorId: '',
-    doctorName: '',
-    doctorEmail: '',
     date: '',
     timeSlot: '',
     reason: ''
   });
-  const [bookingError, setBookingError] = useState('');
-  const [bookingSuccess, setBookingSuccess] = useState('');
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -57,220 +65,434 @@ export default function PatientDashboard() {
       setAppointments(appointmentsResponse.appointments || []);
     } catch (error) {
       console.error('Error loading data:', error);
+      showToast('Failed to load data', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDoctorSelect = (doctor: Doctor) => {
-    setBookingData({
-      ...bookingData,
-      doctorId: doctor._id,
-      doctorName: doctor.name,
-      doctorEmail: doctor.email
-    });
-    setShowBookingForm(true);
-    setBookingError('');
-    setBookingSuccess('');
-  };
-
   const handleBookAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBookingError('');
-    setBookingSuccess('');
-
-    if (!user) return;
-
+    if (!user || !selectedDoctor) return;
+    
+    setBookingLoading(true);
     try {
       await createAppointment({
-        ...bookingData,
+        doctorId: selectedDoctor._id,
+        doctorName: selectedDoctor.name,
+        doctorEmail: selectedDoctor.email,
+        date: bookingData.date,
+        timeSlot: bookingData.timeSlot,
+        reason: bookingData.reason,
         patientName: user.name,
         patientEmail: user.email
       });
-      setBookingSuccess('Appointment booked successfully!');
-      setShowBookingForm(false);
-      setBookingData({
-        doctorId: '',
-        doctorName: '',
-        doctorEmail: '',
-        date: '',
-        timeSlot: '',
-        reason: ''
-      });
+      showToast('Appointment booked successfully!', 'success');
+      setShowBookingModal(false);
+      setSelectedDoctor(null);
+      setBookingData({ date: '', timeSlot: '', reason: '' });
       loadData();
     } catch (error) {
-      setBookingError(error instanceof Error ? error.message : 'Failed to book appointment');
+      showToast(error instanceof Error ? error.message : 'Failed to book appointment', 'error');
+    } finally {
+      setBookingLoading(false);
     }
   };
 
   const handleCancelAppointment = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this appointment?')) return;
-    
     try {
       await cancelAppointment(id);
+      showToast('Appointment cancelled successfully', 'success');
       loadData();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to cancel appointment');
+      showToast(error instanceof Error ? error.message : 'Failed to cancel appointment', 'error');
     }
+  };
+
+  const filteredDoctors = doctors.filter(doctor => {
+    const matchesSearch = doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSpecialization = !filterSpecialization || doctor.specialization === filterSpecialization;
+    return matchesSearch && matchesSpecialization;
+  });
+
+  const upcomingAppointments = appointments.filter(apt => 
+    apt.status === 'pending' || apt.status === 'approved'
+  );
+  
+  const pastAppointments = appointments.filter(apt => 
+    apt.status === 'completed' || apt.status === 'cancelled'
+  );
+
+  const stats = {
+    total: appointments.length,
+    upcoming: upcomingAppointments.length,
+    completed: appointments.filter(a => a.status === 'completed').length,
+    cancelled: appointments.filter(a => a.status === 'cancelled').length,
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'completed': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'approved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return '⏳';
+      case 'approved': return '✅';
+      case 'cancelled': return '❌';
+      case 'completed': return '🎉';
+      default: return '📋';
     }
   };
 
   return (
     <ProtectedRoute allowedRoles={['patient']}>
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-8">Patient Dashboard</h1>
-        
-        {loading ? (
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <div className="grid lg:grid-cols-2 gap-8">
-            {/* Available Doctors */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Available Doctors</h2>
-              {doctors.length === 0 ? (
-                <p className="text-gray-500">No doctors available at the moment.</p>
-              ) : (
-                <div className="space-y-4">
-                  {doctors.map((doctor) => (
-                    <div key={doctor._id} className="border rounded-lg p-4 hover:border-blue-500 transition">
-                      <h3 className="font-semibold">{doctor.name}</h3>
-                      <p className="text-gray-600 text-sm">{doctor.specialization}</p>
-                      <button
-                        onClick={() => handleDoctorSelect(doctor)}
-                        className="mt-2 bg-blue-600 text-white px-4 py-1 rounded text-sm hover:bg-blue-700"
-                      >
-                        Book Appointment
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">Welcome back, {user?.name}! 👋</h1>
+                <p className="text-blue-100 mt-1">Manage your healthcare journey from one place</p>
+              </div>
+              <Button
+                onClick={() => setActiveTab('doctors')}
+                className="bg-white text-blue-600 hover:bg-blue-50"
+              >
+                <MedicalIcons.Calendar />
+                <span className="ml-2">Book New Appointment</span>
+              </Button>
             </div>
+          </div>
+        </div>
 
-            {/* My Appointments */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">My Appointments</h2>
-              {bookingSuccess && (
-                <div className="bg-green-100 text-green-700 p-3 rounded mb-4">
-                  {bookingSuccess}
-                </div>
-              )}
-              {appointments.length === 0 ? (
-                <p className="text-gray-500">No appointments yet.</p>
-              ) : (
-                <div className="space-y-4">
-                  {appointments.map((apt) => (
-                    <div key={apt._id} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold">{apt.doctorName}</h3>
-                          <p className="text-gray-600 text-sm">
-                            {new Date(apt.date).toLocaleDateString()} at {apt.timeSlot}
-                          </p>
-                          <p className="text-gray-500 text-sm">Reason: {apt.reason}</p>
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <>
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 -mt-12">
+                {[
+                  { label: 'Total Appointments', value: stats.total, icon: '📅', color: 'from-blue-500 to-blue-600' },
+                  { label: 'Upcoming', value: stats.upcoming, icon: '⏰', color: 'from-green-500 to-emerald-600' },
+                  { label: 'Completed', value: stats.completed, icon: '✅', color: 'from-purple-500 to-indigo-600' },
+                  { label: 'Cancelled', value: stats.cancelled, icon: '❌', color: 'from-red-500 to-rose-600' },
+                ].map((stat, index) => (
+                  <Card key={index} className="overflow-hidden">
+                    <div className={`h-1 bg-gradient-to-r ${stat.color}`}></div>
+                    <CardBody className="text-center py-6">
+                      <div className="text-3xl mb-2">{stat.icon}</div>
+                      <div className="text-3xl font-bold text-gray-900">{stat.value}</div>
+                      <div className="text-sm text-gray-500 mt-1">{stat.label}</div>
+                    </CardBody>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Tabs */}
+              <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                {[
+                  { id: 'doctors', label: 'Find Doctors', icon: '👨‍⚕️' },
+                  { id: 'appointments', label: 'My Appointments', icon: '📋' },
+                  { id: 'history', label: 'History', icon: '📜' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium whitespace-nowrap transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Find Doctors Tab */}
+              {activeTab === 'doctors' && (
+                <div className="space-y-6">
+                  {/* Search and Filter */}
+                  <Card>
+                    <CardBody>
+                      <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1">
+                          <Input
+                            placeholder="Search doctors by name or specialization..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            icon={
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            }
+                          />
                         </div>
-                        <span className={`px-2 py-1 rounded text-xs ${getStatusColor(apt.status)}`}>
-                          {apt.status}
-                        </span>
+                        <Select
+                          value={filterSpecialization}
+                          onChange={(e) => setFilterSpecialization(e.target.value)}
+                          options={[
+                            { value: '', label: 'All Specializations' },
+                            ...specializations.map(s => ({ value: s.name, label: s.name }))
+                          ]}
+                          className="md:w-64"
+                        />
                       </div>
-                      {apt.status === 'pending' && (
-                        <button
-                          onClick={() => handleCancelAppointment(apt._id)}
-                          className="mt-2 text-red-600 text-sm hover:text-red-800"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                    </CardBody>
+                  </Card>
 
-        {/* Booking Form Modal */}
-        {showBookingForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-              <h2 className="text-xl font-semibold mb-4">Book Appointment with {bookingData.doctorName}</h2>
-              
-              {bookingError && (
-                <div className="bg-red-100 text-red-700 p-3 rounded mb-4">
-                  {bookingError}
+                  {/* Doctors Grid */}
+                  {filteredDoctors.length === 0 ? (
+                    <Card>
+                      <CardBody className="text-center py-12">
+                        <div className="text-6xl mb-4">🔍</div>
+                        <h3 className="text-xl font-semibold text-gray-900 mb-2">No doctors found</h3>
+                        <p className="text-gray-500">Try adjusting your search or filter criteria</p>
+                      </CardBody>
+                    </Card>
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredDoctors.map((doctor) => {
+                        const specInfo = specializations.find(s => s.name === doctor.specialization);
+                        return (
+                          <Card key={doctor._id} hover>
+                            <CardBody>
+                              <div className="flex items-start gap-4">
+                                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-r ${specInfo?.color || 'from-blue-500 to-indigo-500'} flex items-center justify-center text-white text-2xl font-bold`}>
+                                  {doctor.name.charAt(0)}
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-gray-900 text-lg">Dr. {doctor.name}</h3>
+                                  <p className={`text-sm ${specInfo?.bgColor || 'bg-gray-100'} inline-block px-2 py-1 rounded-lg mt-1`}>
+                                    {doctor.specialization}
+                                  </p>
+                                  <div className="flex items-center gap-1 mt-2">
+                                    {[...Array(5)].map((_, i) => (
+                                      <span key={i} className="text-yellow-400 text-sm">★</span>
+                                    ))}
+                                    <span className="text-gray-500 text-sm ml-1">(4.9)</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                                <div className="text-sm text-gray-500">
+                                  <span className="text-green-500">●</span> Available Today
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedDoctor(doctor);
+                                    setShowBookingModal(true);
+                                  }}
+                                >
+                                  Book Now
+                                </Button>
+                              </div>
+                            </CardBody>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
-              
-              <form onSubmit={handleBookAppointment} className="space-y-4">
+
+              {/* My Appointments Tab */}
+              {activeTab === 'appointments' && (
+                <div className="space-y-4">
+                  {upcomingAppointments.length === 0 ? (
+                    <Card>
+                      <CardBody className="text-center py-12">
+                        <div className="text-6xl mb-4">📅</div>
+                        <h3 className="text-xl font-semibold text-gray-900 mb-2">No upcoming appointments</h3>
+                        <p className="text-gray-500 mb-4">Book an appointment with a doctor to get started</p>
+                        <Button onClick={() => setActiveTab('doctors')}>
+                          Find Doctors
+                        </Button>
+                      </CardBody>
+                    </Card>
+                  ) : (
+                    upcomingAppointments.map((apt) => (
+                      <Card key={apt._id} hover>
+                        <CardBody>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                              <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xl">
+                                👨‍⚕️
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-gray-900 text-lg">{apt.doctorName}</h3>
+                                <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <MedicalIcons.Calendar />
+                                    {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <MedicalIcons.Clock />
+                                    {apt.timeSlot}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-500 mt-2">
+                                  <span className="font-medium">Reason:</span> {apt.reason}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
+                                {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                              </span>
+                              {apt.status === 'pending' && (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => handleCancelAppointment(apt._id)}
+                                >
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* History Tab */}
+              {activeTab === 'history' && (
+                <div className="space-y-4">
+                  {pastAppointments.length === 0 ? (
+                    <Card>
+                      <CardBody className="text-center py-12">
+                        <div className="text-6xl mb-4">📜</div>
+                        <h3 className="text-xl font-semibold text-gray-900 mb-2">No appointment history</h3>
+                        <p className="text-gray-500">Your completed and cancelled appointments will appear here</p>
+                      </CardBody>
+                    </Card>
+                  ) : (
+                    pastAppointments.map((apt) => (
+                      <Card key={apt._id}>
+                        <CardBody>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${
+                                apt.status === 'completed' ? 'bg-green-100' : 'bg-red-100'
+                              }`}>
+                                {apt.status === 'completed' ? '✅' : '❌'}
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-gray-900">{apt.doctorName}</h3>
+                                <p className="text-sm text-gray-500">
+                                  {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                                <p className="text-sm text-gray-500 mt-1">Reason: {apt.reason}</p>
+                                {apt.notes && (
+                                  <p className="text-sm text-blue-600 mt-1">Doctor&apos;s notes: {apt.notes}</p>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
+                              {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                            </span>
+                          </div>
+                        </CardBody>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Booking Modal */}
+        <Modal
+          isOpen={showBookingModal}
+          onClose={() => {
+            setShowBookingModal(false);
+            setSelectedDoctor(null);
+            setBookingData({ date: '', timeSlot: '', reason: '' });
+          }}
+          title={`Book Appointment with Dr. ${selectedDoctor?.name || ''}`}
+          size="lg"
+        >
+          <form onSubmit={handleBookAppointment} className="space-y-6">
+            {selectedDoctor && (
+              <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-xl">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xl font-bold">
+                  {selectedDoctor.name.charAt(0)}
+                </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 border rounded-md"
-                    value={bookingData.date}
-                    onChange={(e) => setBookingData({ ...bookingData, date: e.target.value })}
-                  />
+                  <h3 className="font-bold text-gray-900">Dr. {selectedDoctor.name}</h3>
+                  <p className="text-sm text-gray-500">{selectedDoctor.specialization}</p>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time Slot</label>
-                  <select
-                    required
-                    className="w-full px-3 py-2 border rounded-md"
-                    value={bookingData.timeSlot}
-                    onChange={(e) => setBookingData({ ...bookingData, timeSlot: e.target.value })}
-                  >
-                    <option value="">Select a time slot</option>
-                    {timeSlots.map((slot) => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Visit</label>
-                  <textarea
-                    required
-                    className="w-full px-3 py-2 border rounded-md"
-                    rows={3}
-                    value={bookingData.reason}
-                    onChange={(e) => setBookingData({ ...bookingData, reason: e.target.value })}
-                    placeholder="Describe your symptoms or reason for the appointment"
-                  />
-                </div>
-                
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowBookingForm(false)}
-                    className="flex-1 px-4 py-2 border rounded-md hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Book
-                  </button>
-                </div>
-              </form>
+              </div>
+            )}
+
+            <Input
+              label="Select Date"
+              type="date"
+              value={bookingData.date}
+              onChange={(e) => setBookingData({ ...bookingData, date: e.target.value })}
+              min={new Date().toISOString().split('T')[0]}
+              required
+            />
+
+            <Select
+              label="Select Time Slot"
+              value={bookingData.timeSlot}
+              onChange={(e) => setBookingData({ ...bookingData, timeSlot: e.target.value })}
+              options={[
+                { value: '', label: 'Choose a time slot' },
+                ...timeSlots.map(slot => ({ value: slot, label: slot }))
+              ]}
+              required
+            />
+
+            <TextArea
+              label="Reason for Visit"
+              value={bookingData.reason}
+              onChange={(e) => setBookingData({ ...bookingData, reason: e.target.value })}
+              placeholder="Describe your symptoms or reason for the appointment..."
+              rows={4}
+              required
+            />
+
+            <div className="flex gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowBookingModal(false);
+                  setSelectedDoctor(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                isLoading={bookingLoading}
+              >
+                Confirm Booking
+              </Button>
             </div>
-          </div>
-        )}
+          </form>
+        </Modal>
       </div>
     </ProtectedRoute>
   );
