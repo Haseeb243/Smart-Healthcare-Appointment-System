@@ -29,8 +29,10 @@ router.post('/', authMiddleware, requireRole('patient'), async (req, res) => {
       type: EVENTS.APPOINTMENT_CREATED,
       data: {
         appointmentId: appointment._id,
+        patientId: req.user.id,
         patientName,
         patientEmail,
+        doctorId,
         doctorName,
         doctorEmail,
         date,
@@ -114,8 +116,10 @@ router.patch('/:id/approve', authMiddleware, requireRole('doctor'), async (req, 
       type: EVENTS.APPOINTMENT_APPROVED,
       data: {
         appointmentId: appointment._id,
+        patientId: appointment.patientId,
         patientName: appointment.patientName,
         patientEmail: appointment.patientEmail,
+        doctorId: appointment.doctorId,
         doctorName: appointment.doctorName,
         date: appointment.date,
         timeSlot: appointment.timeSlot
@@ -152,8 +156,10 @@ router.patch('/:id/cancel', authMiddleware, async (req, res) => {
       type: EVENTS.APPOINTMENT_CANCELLED,
       data: {
         appointmentId: appointment._id,
+        patientId: appointment.patientId,
         patientName: appointment.patientName,
         patientEmail: appointment.patientEmail,
+        doctorId: appointment.doctorId,
         doctorName: appointment.doctorName,
         doctorEmail: appointment.doctorEmail,
         date: appointment.date,
@@ -190,8 +196,10 @@ router.patch('/:id/complete', authMiddleware, requireRole('doctor'), async (req,
       type: EVENTS.APPOINTMENT_COMPLETED,
       data: {
         appointmentId: appointment._id,
+        patientId: appointment.patientId,
         patientName: appointment.patientName,
         patientEmail: appointment.patientEmail,
+        doctorId: appointment.doctorId,
         doctorName: appointment.doctorName,
         date: appointment.date,
         timeSlot: appointment.timeSlot

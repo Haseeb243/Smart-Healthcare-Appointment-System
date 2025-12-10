@@ -1,6 +1,8 @@
 // API base URLs
 export const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4001/api';
 export const APPOINTMENT_API_URL = process.env.NEXT_PUBLIC_APPOINTMENT_API_URL || 'http://localhost:4002/api';
+export const NOTIFICATION_API_URL = process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:4003/api';
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4003';
 
 // Helper function to safely parse JSON error response
 async function parseErrorResponse(response: Response, defaultMessage: string): Promise<string> {
@@ -198,6 +200,118 @@ export async function completeAppointment(id: string, notes?: string) {
   if (!response.ok) {
     const message = await parseErrorResponse(response, 'Failed to complete appointment');
     throw new Error(message);
+  }
+  
+  return response.json();
+}
+
+// Notification API functions
+export async function getNotifications(userId: string, limit = 20, unreadOnly = false) {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (unreadOnly) params.append('unreadOnly', 'true');
+  
+  const response = await fetch(`${NOTIFICATION_API_URL}/notifications/${userId}?${params}`, {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch notifications');
+  }
+  
+  return response.json();
+}
+
+export async function getUnreadNotificationCount(userId: string) {
+  const response = await fetch(`${NOTIFICATION_API_URL}/notifications/${userId}/unread-count`, {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch unread count');
+  }
+  
+  return response.json();
+}
+
+export async function markNotificationAsRead(notificationId: string) {
+  const response = await fetch(`${NOTIFICATION_API_URL}/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to mark notification as read');
+  }
+  
+  return response.json();
+}
+
+export async function markAllNotificationsAsRead(userId: string) {
+  const response = await fetch(`${NOTIFICATION_API_URL}/notifications/${userId}/read-all`, {
+    method: 'PATCH',
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to mark all notifications as read');
+  }
+  
+  return response.json();
+}
+
+// Message API functions
+export async function getMessages(appointmentId: string, limit = 50) {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  
+  const response = await fetch(`${NOTIFICATION_API_URL}/messages/appointment/${appointmentId}?${params}`, {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch messages');
+  }
+  
+  return response.json();
+}
+
+export async function sendMessage(data: {
+  appointmentId: string;
+  senderId: string;
+  senderRole: 'patient' | 'doctor';
+  senderName: string;
+  receiverId: string;
+  receiverName: string;
+  content: string;
+}) {
+  const response = await fetch(`${NOTIFICATION_API_URL}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to send message');
+    throw new Error(message);
+  }
+  
+  return response.json();
+}
+
+export async function markMessagesAsRead(appointmentId: string, userId: string) {
+  const response = await fetch(`${NOTIFICATION_API_URL}/messages/appointment/${appointmentId}/read`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ userId }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to mark messages as read');
   }
   
   return response.json();

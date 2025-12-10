@@ -4,15 +4,17 @@ import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment } from '@/lib/api';
-import { Card, CardBody, CardHeader } from '@/components/ui/Card';
+import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input, TextArea, Select } from '@/components/ui/Input';
+import { TextArea, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { MedicalIcons } from '@/components/ui/Icons';
 import { useToast } from '@/components/ui/Toast';
+import MessagingPanel from '@/components/MessagingPanel';
 
 interface Appointment {
   _id: string;
+  patientId: string;
   patientName: string;
   patientEmail: string;
   date: string;
@@ -33,6 +35,7 @@ export default function DoctorDashboard() {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [notes, setNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [messagingAppointment, setMessagingAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     loadAppointments();
@@ -412,6 +415,17 @@ export default function DoctorDashboard() {
                             {apt.status === 'approved' && (
                               <>
                                 <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setMessagingAppointment(apt)}
+                                  className="flex items-center gap-1"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  </svg>
+                                  Message
+                                </Button>
+                                <Button
                                   variant="primary"
                                   size="sm"
                                   onClick={() => {
@@ -505,6 +519,17 @@ export default function DoctorDashboard() {
             </div>
           </div>
         </Modal>
+
+        {/* Messaging Panel */}
+        {messagingAppointment && (
+          <MessagingPanel
+            appointmentId={messagingAppointment._id}
+            receiverId={messagingAppointment.patientId}
+            receiverName={messagingAppointment.patientName}
+            receiverRole="patient"
+            onClose={() => setMessagingAppointment(null)}
+          />
+        )}
       </div>
     </ProtectedRoute>
   );
