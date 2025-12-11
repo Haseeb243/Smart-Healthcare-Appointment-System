@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import MessagingPanel from '@/components/MessagingPanel';
 import RescheduleModal from '@/components/RescheduleModal';
 import CalendarLinks from '@/components/CalendarLinks';
+import { SkeletonList, SkeletonStats } from '@/components/ui/Skeleton';
 
 interface Doctor {
   _id: string;
@@ -206,8 +207,9 @@ export default function PatientDashboard() {
             </div>
           </div>
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <div className="space-y-8">
+              <SkeletonStats />
+              <SkeletonList count={3} />
             </div>
           ) : (
             <>
