@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   mongodb:
@@ -64,17 +64,14 @@ services:
     container_name: healthcare-notification-service
     ports:
       - "4003:4003"
+    env_file:
+      - ./backend/notification-service/.env
     environment:
       - PORT=4003
       - MONGODB_URI=mongodb://mongodb:27017/healthcare-notifications
       - REDIS_URL=redis://redis:6379
       - FRONTEND_URL=http://localhost:3000
       - NODE_ENV=development
-      # Gmail SMTP Configuration (use App Password)
-      - SMTP_HOST=smtp.gmail.com
-      - SMTP_PORT=587
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASS=${SMTP_PASS:-}
     depends_on:
       - mongodb
       - redis
