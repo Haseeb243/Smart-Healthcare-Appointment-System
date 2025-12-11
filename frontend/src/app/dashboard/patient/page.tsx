@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDoctors, createAppointment, getPatientAppointments, cancelAppointment, requestReschedule } from '@/lib/api';
+import { getDoctors, createAppointment, getPatientAppointments, cancelAppointment, requestReschedule, rateAppointment } from '@/lib/api';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, TextArea, Select } from '@/components/ui/Input';
@@ -40,6 +40,11 @@ interface Appointment {
     status: 'pending' | 'approved' | 'declined' | 'none';
     requestedAt: Date;
   };
+  rating?: {
+    score: number;
+    comment?: string;
+    ratedAt?: string;
+  };
 }
 
 const timeSlots = [
@@ -67,6 +72,10 @@ function PatientDashboardContent() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [messagingAppointment, setMessagingAppointment] = useState<Appointment | null>(null);
   const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
+  const [ratingAppointment, setRatingAppointment] = useState<Appointment | null>(null);
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingLoading, setRatingLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -144,6 +153,23 @@ function PatientDashboardContent() {
     }
   };
 
+  const handleSubmitRating = async () => {
+    if (!ratingAppointment) return;
+    setRatingLoading(true);
+    try {
+      await rateAppointment(ratingAppointment._id, ratingScore, ratingComment);
+      showToast('Rating submitted. Thank you!', 'success');
+      setRatingAppointment(null);
+      setRatingScore(5);
+      setRatingComment('');
+      loadData();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to submit rating', 'error');
+    } finally {
+      setRatingLoading(false);
+    }
+  };
+
   const filteredDoctors = doctors.filter(doctor => {
     const matchesSearch = doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase());
@@ -159,11 +185,18 @@ function PatientDashboardContent() {
     apt.status === 'completed' || apt.status === 'cancelled'
   );
 
+  const ratedAppointments = appointments.filter(apt => apt.status === 'completed' && apt.rating?.score);
+  const averageRating = ratedAppointments.length
+    ? (ratedAppointments.reduce((sum, a) => sum + (a.rating?.score || 0), 0) / ratedAppointments.length).toFixed(2)
+    : '—';
+
   const stats = {
     total: appointments.length,
     upcoming: upcomingAppointments.length,
     completed: appointments.filter(a => a.status === 'completed').length,
     cancelled: appointments.filter(a => a.status === 'cancelled').length,
+    ratings: ratedAppointments.length,
+    ratingAvg: averageRating,
   };
 
   const getStatusColor = (status: string) => {
@@ -214,12 +247,14 @@ function PatientDashboardContent() {
           ) : (
             <>
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
                 {[
                   { label: 'Total Appointments', value: stats.total, icon: '📅', color: 'from-blue-500 to-blue-600' },
                   { label: 'Upcoming', value: stats.upcoming, icon: '⏰', color: 'from-green-500 to-emerald-600' },
                   { label: 'Completed', value: stats.completed, icon: '✅', color: 'from-purple-500 to-indigo-600' },
                   { label: 'Cancelled', value: stats.cancelled, icon: '❌', color: 'from-red-500 to-rose-600' },
+                  { label: 'Ratings Given', value: stats.ratings, icon: '⭐', color: 'from-amber-500 to-orange-500' },
+                  { label: 'Avg Rating', value: stats.ratingAvg, icon: '🌟', color: 'from-yellow-500 to-amber-500' },
                 ].map((stat, index) => (
                   <Card key={index} className="overflow-hidden">
                     <div className={`h-1 bg-gradient-to-r ${stat.color}`}></div>
@@ -478,6 +513,33 @@ function PatientDashboardContent() {
                                 {apt.notes && (
                                   <p className="text-sm text-blue-600 mt-1">Doctor&apos;s notes: {apt.notes}</p>
                                 )}
+                                {apt.status === 'completed' && (
+                                  <div className="mt-2 flex items-center gap-3 flex-wrap">
+                                    {apt.rating?.score ? (
+                                      <>
+                                        <span className="text-yellow-500">
+                                          {[1,2,3,4,5].map((n) => (
+                                            <span key={n}>{n <= apt.rating!.score ? '★' : '☆'}</span>
+                                          ))}
+                                        </span>
+                                        {apt.rating.comment && (
+                                          <span className="text-gray-600 italic">“{apt.rating.comment}”</span>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => {
+                                          setRatingAppointment(apt);
+                                          setRatingScore(5);
+                                          setRatingComment('');
+                                        }}
+                                      >
+                                        Rate Appointment
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
@@ -593,6 +655,63 @@ function PatientDashboardContent() {
             doctorName={rescheduleAppointment.doctorName}
             role="patient"
           />
+        )}
+
+        {/* Rating Modal */}
+        {ratingAppointment && (
+          <Modal
+            isOpen={!!ratingAppointment}
+            onClose={() => {
+              setRatingAppointment(null);
+              setRatingScore(5);
+              setRatingComment('');
+            }}
+            title={`Rate your visit with Dr. ${ratingAppointment.doctorName}`}
+            size="md"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                {[1,2,3,4,5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRatingScore(value)}
+                    className={`text-2xl ${value <= ratingScore ? 'text-yellow-500' : 'text-gray-300'} focus:outline-none`}
+                  >
+                    {value <= ratingScore ? '★' : '☆'}
+                  </button>
+                ))}
+                <span className="text-sm text-gray-600">{ratingScore} / 5</span>
+              </div>
+              <TextArea
+                label="Leave a comment (optional)"
+                value={ratingComment}
+                onChange={(e) => setRatingComment(e.target.value)}
+                rows={4}
+                placeholder="How was your consultation?"
+              />
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setRatingAppointment(null);
+                    setRatingScore(5);
+                    setRatingComment('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSubmitRating}
+                  isLoading={ratingLoading}
+                >
+                  Submit Rating
+                </Button>
+              </div>
+            </div>
+          </Modal>
         )}
       </DashboardLayout>
     </ProtectedRoute>

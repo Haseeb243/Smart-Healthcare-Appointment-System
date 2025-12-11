@@ -154,6 +154,13 @@ export default function MessagingPanel({
     e.preventDefault();
     if ((!newMessage.trim() && !selectedFile) || !user?._id || !user?.name || sending) return;
 
+    // If the browser still holds a file selection but we cleared state, drop it
+    if (!selectedFile && fileInputRef.current?.files?.length) {
+      fileInputRef.current.value = '';
+    }
+
+    const fileToSend = selectedFile || undefined;
+
     setSending(true);
     setIsTyping(false);
     stopTyping(appointmentId);
@@ -166,8 +173,8 @@ export default function MessagingPanel({
         senderName: user.name,
         receiverId,
         receiverName,
-        content: newMessage.trim() || (selectedFile ? `Sent a file: ${selectedFile.name}` : ''),
-        file: selectedFile || undefined,
+        content: newMessage.trim() || (fileToSend ? `Sent a file: ${fileToSend.name}` : ''),
+        file: fileToSend,
       };
 
       await sendMessage(messageData);
@@ -321,6 +328,11 @@ export default function MessagingPanel({
                   {/* Messages */}
                   {dateMessages.map((message) => {
                     const isOwnMessage = message.senderId === user._id;
+                    const attachment = message.attachment;
+                    const isImageAttachment = attachment?.fileType?.startsWith('image/');
+                    const attachmentHref = attachment?.fileUrl
+                      ? `${process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:4003/api'}${attachment.fileUrl}`
+                      : undefined;
 
                     return (
                       <div
@@ -334,11 +346,11 @@ export default function MessagingPanel({
                               : 'bg-white text-gray-900 shadow-sm border border-gray-100 rounded-bl-md'
                           }`}
                         >
-                          {message.attachment && (
+                          {attachment && attachment.fileName && attachment.fileUrl && (
                             <a
-                              href={`${process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:4003/api'}${message.attachment.fileUrl}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href={attachmentHref}
+                              target={attachmentHref ? "_blank" : undefined}
+                              rel={attachmentHref ? "noopener noreferrer" : undefined}
                               className={`flex items-center gap-2 p-2 rounded-lg mb-2 ${
                                 isOwnMessage ? 'bg-white/20 hover:bg-white/30' : 'bg-gray-100 hover:bg-gray-200'
                               }`}
@@ -346,19 +358,21 @@ export default function MessagingPanel({
                               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                                 isOwnMessage ? 'bg-white/20' : 'bg-gray-200'
                               }`}>
-                                {message.attachment.fileType.startsWith('image/') ? '🖼️' : '📄'}
+                                {isImageAttachment ? '🖼️' : '📄'}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className={`text-sm font-medium truncate ${
                                   isOwnMessage ? 'text-white' : 'text-gray-900'
                                 }`}>
-                                  {message.attachment.fileName}
+                                  {attachment.fileName || 'Attachment'}
                                 </p>
-                                <p className={`text-xs ${
-                                  isOwnMessage ? 'text-blue-100' : 'text-gray-500'
-                                }`}>
-                                  {formatFileSize(message.attachment.fileSize)}
-                                </p>
+                                {typeof attachment.fileSize === 'number' && (
+                                  <p className={`text-xs ${
+                                    isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                                  }`}>
+                                    {formatFileSize(attachment.fileSize)}
+                                  </p>
+                                )}
                               </div>
                               <svg className={`w-5 h-5 ${isOwnMessage ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

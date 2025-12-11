@@ -339,7 +339,8 @@ let consumer = null;
 let kafka = null;
 
 const initEventSubscriber = async () => {
-  const kafkaBrokers = (process.env.KAFKA_BROKERS || 'localhost:9092').split(',');
+    const kafkaBrokers = (process.env.KAFKA_BROKERS || 'kafka:29092').split(',');
+    console.log('Using Kafka brokers:', kafkaBrokers.join(','));
   
   kafka = new Kafka({
     clientId: 'notification-service',

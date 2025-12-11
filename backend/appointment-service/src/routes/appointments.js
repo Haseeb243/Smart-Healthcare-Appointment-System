@@ -385,4 +385,43 @@ router.get('/:id/calendar/download', authMiddleware, async (req, res) => {
   }
 });
 
+// Rate an appointment (patients, completed only)
+router.post('/:id/rate', authMiddleware, requireRole('patient'), async (req, res) => {
+  try {
+    const { score, comment } = req.body;
+
+    if (!score || score < 1 || score > 5) {
+      return res.status(400).json({ message: 'Score must be between 1 and 5' });
+    }
+
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+
+    if (appointment.patientId.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    if (appointment.status !== 'completed') {
+      return res.status(400).json({ message: 'Can only rate completed appointments' });
+    }
+
+    if (appointment.rating?.score) {
+      return res.status(400).json({ message: 'Appointment already rated' });
+    }
+
+    appointment.rating = {
+      score,
+      comment: comment?.trim(),
+      ratedAt: new Date()
+    };
+
+    await appointment.save();
+
+    res.json({ message: 'Rating submitted', appointment });
+  } catch (error) {
+    console.error('Error rating appointment:', error);
+    res.status(500).json({ message: 'Error submitting rating', error: error.message });
+  }
+});
+
 module.exports = router;

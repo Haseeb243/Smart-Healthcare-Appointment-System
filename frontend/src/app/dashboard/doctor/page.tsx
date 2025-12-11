@@ -34,6 +34,11 @@ interface Appointment {
     status: 'pending' | 'approved' | 'declined' | 'none';
     requestedAt: Date;
   };
+  rating?: {
+    score: number;
+    comment?: string;
+    ratedAt?: string;
+  };
 }
 
 function DoctorDashboardContent() {
@@ -206,12 +211,18 @@ function DoctorDashboardContent() {
     return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   };
 
+  const ratings = appointments.filter(a => a.status === 'completed' && (a as any).rating?.score);
+  const averageRating = ratings.length
+    ? (ratings.reduce((sum, a: any) => sum + (a.rating?.score || 0), 0) / ratings.length).toFixed(2)
+    : '—';
+
   const stats = {
     total: appointments.length,
     pending: appointments.filter(a => a.status === 'pending').length,
     approved: appointments.filter(a => a.status === 'approved').length,
     completed: appointments.filter(a => a.status === 'completed').length,
     today: todayAppointments.length,
+    ratingAvg: averageRating,
   };
 
   const filteredAppointments = getFilteredAppointments();
@@ -240,13 +251,14 @@ function DoctorDashboardContent() {
           ) : (
             <>
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
                 {[
                   { label: 'Today', value: stats.today, icon: '📅', color: 'from-blue-500 to-blue-600' },
                   { label: 'Total', value: stats.total, icon: '📊', color: 'from-gray-500 to-gray-600' },
                   { label: 'Pending', value: stats.pending, icon: '⏳', color: 'from-yellow-500 to-amber-600' },
                   { label: 'Approved', value: stats.approved, icon: '✅', color: 'from-green-500 to-emerald-600' },
                   { label: 'Completed', value: stats.completed, icon: '🎉', color: 'from-purple-500 to-indigo-600' },
+                  { label: 'Avg Rating', value: stats.ratingAvg, icon: '⭐', color: 'from-amber-500 to-orange-500' },
                 ].map((stat, index) => (
                   <Card key={index} className="overflow-hidden">
                     <div className={`h-1 bg-gradient-to-r ${stat.color}`}></div>
@@ -432,6 +444,24 @@ function DoctorDashboardContent() {
                                       <span className="font-medium text-blue-700">Your Notes:</span>{' '}
                                       <span className="text-blue-600">{apt.notes}</span>
                                     </p>
+                                  )}
+                                  {apt.status === 'completed' && (
+                                    <div className="text-sm mt-2 text-gray-700 flex items-center gap-2 flex-wrap">
+                                      {apt.rating?.score ? (
+                                        <>
+                                          <span className="text-yellow-500">
+                                            {[1,2,3,4,5].map((n) => (
+                                              <span key={n}>{n <= apt.rating!.score ? '★' : '☆'}</span>
+                                            ))}
+                                          </span>
+                                          {apt.rating.comment && (
+                                            <span className="text-gray-600 italic">“{apt.rating.comment}”</span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <span className="text-gray-500">Awaiting patient rating</span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
 

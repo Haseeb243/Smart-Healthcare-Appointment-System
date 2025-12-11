@@ -205,6 +205,25 @@ export async function completeAppointment(id: string, notes?: string) {
   return response.json();
 }
 
+// Rate appointment
+export async function rateAppointment(id: string, score: number, comment?: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/rate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ score, comment })
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to submit rating');
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 // Reschedule appointment functions
 export async function requestReschedule(id: string, requestedDate: string, requestedTimeSlot: string) {
   const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/reschedule-request`, {

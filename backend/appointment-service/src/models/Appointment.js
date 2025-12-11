@@ -60,6 +60,11 @@ const appointmentSchema = new mongoose.Schema({
     },
     requestedAt: Date
   },
+  rating: {
+    score: { type: Number, min: 1, max: 5 },
+    comment: String,
+    ratedAt: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -25,6 +25,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     { name: 'Find Doctors', href: '/dashboard/patient?tab=doctors', icon: '👨‍⚕️' },
     { name: 'My Appointments', href: '/dashboard/patient?tab=appointments', icon: '📋' },
     { name: 'History', href: '/dashboard/patient?tab=history', icon: '📜' },
+    { name: 'Ratings', href: '/dashboard/patient/ratings', icon: '⭐' },
     { name: 'Profile', href: '/profile', icon: '👤' },
   ];
 
@@ -34,6 +35,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     { name: 'Upcoming', href: '/dashboard/doctor?tab=upcoming', icon: '⏰' },
     { name: 'All Appointments', href: '/dashboard/doctor?tab=all', icon: '📋' },
     { name: 'Completed', href: '/dashboard/doctor?tab=completed', icon: '✅' },
+    { name: 'Ratings', href: '/dashboard/doctor/ratings', icon: '⭐' },
     { name: 'Profile', href: '/profile', icon: '👤' },
   ];
 
