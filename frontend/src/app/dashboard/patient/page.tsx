@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDoctors, createAppointment, getPatientAppointments, cancelAppointment } from '@/lib/api';
+import { getDoctors, createAppointment, getPatientAppointments, cancelAppointment, requestReschedule } from '@/lib/api';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, TextArea, Select } from '@/components/ui/Input';
@@ -11,6 +13,8 @@ import { Modal } from '@/components/ui/Modal';
 import { MedicalIcons, specializations } from '@/components/ui/Icons';
 import { useToast } from '@/components/ui/Toast';
 import MessagingPanel from '@/components/MessagingPanel';
+import RescheduleModal from '@/components/RescheduleModal';
+import CalendarLinks from '@/components/CalendarLinks';
 
 interface Doctor {
   _id: string;
@@ -28,6 +32,13 @@ interface Appointment {
   reason: string;
   status: 'pending' | 'approved' | 'cancelled' | 'completed';
   notes?: string;
+  rescheduleRequest?: {
+    requestedDate: Date;
+    requestedTimeSlot: string;
+    requestedBy: 'patient' | 'doctor';
+    status: 'pending' | 'approved' | 'declined' | 'none';
+    requestedAt: Date;
+  };
 }
 
 const timeSlots = [
@@ -38,6 +49,7 @@ const timeSlots = [
 export default function PatientDashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,10 +65,16 @@ export default function PatientDashboard() {
   });
   const [bookingLoading, setBookingLoading] = useState(false);
   const [messagingAppointment, setMessagingAppointment] = useState<Appointment | null>(null);
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     loadData();
-  }, []);
+    // Check if there's a tab parameter in URL
+    const tab = searchParams?.get('tab');
+    if (tab && (tab === 'doctors' || tab === 'appointments' || tab === 'history')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const loadData = async () => {
     try {
@@ -112,6 +130,19 @@ export default function PatientDashboard() {
     }
   };
 
+  const handleRequestReschedule = async (date: string, timeSlot: string) => {
+    if (!rescheduleAppointment) return;
+    
+    try {
+      await requestReschedule(rescheduleAppointment._id, date, timeSlot);
+      showToast('Reschedule request submitted successfully!', 'success');
+      loadData();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to request reschedule', 'error');
+      throw error; // Re-throw to let modal handle it
+    }
+  };
+
   const filteredDoctors = doctors.filter(doctor => {
     const matchesSearch = doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase());
@@ -156,27 +187,24 @@ export default function PatientDashboard() {
 
   return (
     <ProtectedRoute allowedRoles={['patient']}>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-          <div className="max-w-7xl mx-auto px-4 py-8">
+      <DashboardLayout role="patient">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold">Welcome back, {user?.name}! 👋</h1>
-                <p className="text-blue-100 mt-1">Manage your healthcare journey from one place</p>
+                <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.name}! 👋</h1>
+                <p className="text-gray-600 mt-1">Manage your healthcare journey from one place</p>
               </div>
               <Button
                 onClick={() => setActiveTab('doctors')}
-                className="bg-white text-blue-600 hover:bg-blue-50"
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
               >
                 <MedicalIcons.Calendar />
                 <span className="ml-2">Book New Appointment</span>
               </Button>
             </div>
           </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto px-4 py-8">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -184,7 +212,7 @@ export default function PatientDashboard() {
           ) : (
             <>
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 -mt-12">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {[
                   { label: 'Total Appointments', value: stats.total, icon: '📅', color: 'from-blue-500 to-blue-600' },
                   { label: 'Upcoming', value: stats.upcoming, icon: '⏰', color: 'from-green-500 to-emerald-600' },
@@ -330,45 +358,75 @@ export default function PatientDashboard() {
                     upcomingAppointments.map((apt) => (
                       <Card key={apt._id} hover>
                         <CardBody>
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-start gap-4">
-                              <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xl">
-                                👨‍⚕️
-                              </div>
-                              <div>
-                                <h3 className="font-bold text-gray-900 text-lg">{apt.doctorName}</h3>
-                                <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                                  <span className="flex items-center gap-1">
-                                    <MedicalIcons.Calendar />
-                                    {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <MedicalIcons.Clock />
-                                    {apt.timeSlot}
-                                  </span>
+                          <div className="space-y-4">
+                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                              <div className="flex items-start gap-4 flex-1">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xl flex-shrink-0">
+                                  👨‍⚕️
                                 </div>
-                                <p className="text-sm text-gray-500 mt-2">
-                                  <span className="font-medium">Reason:</span> {apt.reason}
-                                </p>
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-gray-900 text-lg">{apt.doctorName}</h3>
+                                  <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <MedicalIcons.Calendar />
+                                      {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <MedicalIcons.Clock />
+                                      {apt.timeSlot}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-500 mt-2">
+                                    <span className="font-medium">Reason:</span> {apt.reason}
+                                  </p>
+                                  {apt.rescheduleRequest && apt.rescheduleRequest.status === 'pending' && (
+                                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                      <p className="text-xs text-yellow-800">
+                                        📅 Reschedule pending: {new Date(apt.rescheduleRequest.requestedDate).toLocaleDateString()} at {apt.rescheduleRequest.requestedTimeSlot}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
+                                  {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                                </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className={`px-3 py-1.5 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
-                                {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
-                              </span>
+                            
+                            {/* Action buttons */}
+                            <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                disabled={apt.status !== 'approved'}
-                                onClick={() => apt.status === 'approved' && setMessagingAppointment(apt)}
-                                className={`flex items-center gap-1 ${apt.status !== 'approved' ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                title={apt.status === 'approved' ? 'Message your doctor' : 'Messaging unlocks after approval'}
+                                onClick={() => setMessagingAppointment(apt)}
+                                className="flex items-center gap-1"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
                                 Message
                               </Button>
+                              
+                              {(apt.status === 'approved' || apt.status === 'pending') && !apt.rescheduleRequest?.status !== 'pending' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setRescheduleAppointment(apt)}
+                                  className="flex items-center gap-1"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  Reschedule
+                                </Button>
+                              )}
+                              
+                              {apt.status === 'approved' && (
+                                <CalendarLinks appointmentId={apt._id} />
+                              )}
+                              
                               {apt.status === 'pending' && (
                                 <Button
                                   variant="danger"
@@ -520,7 +578,22 @@ export default function PatientDashboard() {
             onClose={() => setMessagingAppointment(null)}
           />
         )}
-      </div>
+
+        {/* Reschedule Modal */}
+        {rescheduleAppointment && (
+          <RescheduleModal
+            isOpen={!!rescheduleAppointment}
+            onClose={() => setRescheduleAppointment(null)}
+            onSubmit={handleRequestReschedule}
+            appointmentId={rescheduleAppointment._id}
+            currentDate={rescheduleAppointment.date}
+            currentTimeSlot={rescheduleAppointment.timeSlot}
+            doctorName={rescheduleAppointment.doctorName}
+            role="patient"
+          />
+        )}
+        </div>
+      </DashboardLayout>
     </ProtectedRoute>
   );
 }
