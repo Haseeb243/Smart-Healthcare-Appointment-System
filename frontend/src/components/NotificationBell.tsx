@@ -114,6 +114,8 @@ export default function NotificationBell() {
         return '❌';
       case 'APPOINTMENT_COMPLETED':
         return '🎉';
+      case 'APPOINTMENT_RESCHEDULED':
+        return '📅';
       case 'NEW_MESSAGE':
         return '💬';
       default:
@@ -131,6 +133,8 @@ export default function NotificationBell() {
         return 'bg-red-100 border-red-200';
       case 'APPOINTMENT_COMPLETED':
         return 'bg-purple-100 border-purple-200';
+      case 'APPOINTMENT_RESCHEDULED':
+        return 'bg-yellow-100 border-yellow-200';
       case 'NEW_MESSAGE':
         return 'bg-indigo-100 border-indigo-200';
       default:

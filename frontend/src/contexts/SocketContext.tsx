@@ -48,6 +48,8 @@ interface SocketContextType {
   onTyping: (callback: (data: { userName: string }) => void) => () => void;
   onStopTyping: (callback: () => void) => () => void;
   onAppointmentUpdate: (callback: (data: { status: string; type: string }) => void) => () => void;
+  onOnlineStatus: (callback: (data: { userId: string; isOnline: boolean }) => void) => () => void;
+  getUserOnlineStatus: (userId: string) => boolean;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -58,16 +60,19 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
   
   // Store callbacks for events
   const messageCallbacks = useRef<Set<(message: Message) => void>>(new Set());
   const typingCallbacks = useRef<Set<(data: { userName: string }) => void>>(new Set());
   const stopTypingCallbacks = useRef<Set<() => void>>(new Set());
   const appointmentUpdateCallbacks = useRef<Set<(data: { status: string; type: string }) => void>>(new Set());
+  const onlineStatusCallbacks = useRef<Set<(data: { userId: string; isOnline: boolean }) => void>>(new Set());
   
   // Store user ID ref for stable connection management
   const userIdRef = useRef<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const currentUserId = user?._id || null;
@@ -114,6 +119,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     newSocket.on('disconnect', () => {
       console.log('Socket disconnected');
       setIsConnected(false);
+      // Start polling fallback when disconnected
+      startPolling();
     });
 
     newSocket.on('notification', (notification: Notification) => {
@@ -139,14 +146,54 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       appointmentUpdateCallbacks.current.forEach(callback => callback(data));
     });
 
+    newSocket.on('user_online_status', (data: { userId: string; isOnline: boolean }) => {
+      setOnlineUsers(prev => ({ ...prev, [data.userId]: data.isOnline }));
+      onlineStatusCallbacks.current.forEach(callback => callback(data));
+    });
+
+    newSocket.on('reconnect', () => {
+      console.log('Socket reconnected');
+      stopPolling();
+    });
+
     setSocket(newSocket);
 
     return () => {
+      stopPolling();
       if (newSocket) {
         newSocket.disconnect();
       }
     };
   }, [user?._id]);
+
+  // Polling fallback for notifications when socket is disconnected
+  const startPolling = useCallback(() => {
+    if (pollingIntervalRef.current || !user?._id) return;
+    
+    console.log('Starting notification polling fallback');
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const { getNotifications } = await import('@/lib/api');
+        const data = await getNotifications(user._id, 20);
+        if (data.notifications && data.notifications.length > 0) {
+          setNotifications(data.notifications);
+        }
+        if (typeof data.unreadCount === 'number') {
+          setUnreadCount(data.unreadCount);
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    }, 20000); // Poll every 20 seconds
+  }, [user?._id]);
+
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      console.log('Stopping notification polling');
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
 
   const addNotification = useCallback((notification: Notification) => {
     setNotifications(prev => [notification, ...prev]);
@@ -224,6 +271,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const onOnlineStatus = useCallback((callback: (data: { userId: string; isOnline: boolean }) => void) => {
+    onlineStatusCallbacks.current.add(callback);
+    return () => {
+      onlineStatusCallbacks.current.delete(callback);
+    };
+  }, []);
+
+  const getUserOnlineStatus = useCallback((userId: string) => {
+    return onlineUsers[userId] || false;
+  }, [onlineUsers]);
+
   return (
     <SocketContext.Provider
       value={{
@@ -243,6 +301,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         onTyping,
         onStopTyping,
         onAppointmentUpdate,
+        onOnlineStatus,
+        getUserOnlineStatus,
       }}
     >
       {children}

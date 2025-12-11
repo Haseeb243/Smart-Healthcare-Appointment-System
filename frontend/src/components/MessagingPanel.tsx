@@ -13,6 +13,12 @@ interface Message {
   senderName: string;
   receiverId: string;
   content: string;
+  attachment?: {
+    fileName: string;
+    fileType: string;
+    fileSize: number;
+    fileUrl: string;
+  };
   read: boolean;
   createdAt: string;
 }
@@ -40,7 +46,8 @@ export default function MessagingPanel({
     sendTyping, 
     stopTyping,
     onTyping,
-    onStopTyping
+    onStopTyping,
+    getUserOnlineStatus
   } = useSocket();
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -49,9 +56,12 @@ export default function MessagingPanel({
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isReceiverOnline, setIsReceiverOnline] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,11 +86,14 @@ export default function MessagingPanel({
 
     loadMessages();
     joinAppointmentRoom(appointmentId);
+    
+    // Check receiver online status
+    setIsReceiverOnline(getUserOnlineStatus(receiverId));
 
     return () => {
       leaveAppointmentRoom(appointmentId);
     };
-  }, [appointmentId, user?._id, joinAppointmentRoom, leaveAppointmentRoom]);
+  }, [appointmentId, user?._id, receiverId, joinAppointmentRoom, leaveAppointmentRoom, getUserOnlineStatus]);
 
   // Listen for new messages
   useEffect(() => {
@@ -139,7 +152,7 @@ export default function MessagingPanel({
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user?._id || !user?.name || sending) return;
+    if ((!newMessage.trim() && !selectedFile) || !user?._id || !user?.name || sending) return;
 
     setSending(true);
     setIsTyping(false);
@@ -153,16 +166,47 @@ export default function MessagingPanel({
         senderName: user.name,
         receiverId,
         receiverName,
-        content: newMessage.trim(),
+        content: newMessage.trim() || (selectedFile ? `Sent a file: ${selectedFile.name}` : ''),
+        file: selectedFile || undefined,
       };
 
       await sendMessage(messageData);
       setNewMessage('');
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
       setSending(false);
     }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Only PDF, JPEG, and PNG files are allowed');
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   const formatTime = (dateString: string) => {
@@ -210,14 +254,21 @@ export default function MessagingPanel({
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold">
-              {receiverName.charAt(0).toUpperCase()}
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold">
+                {receiverName.charAt(0).toUpperCase()}
+              </div>
+              {isReceiverOnline && (
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></span>
+              )}
             </div>
             <div>
               <h2 className="font-bold">
                 {receiverRole === 'doctor' ? 'Dr. ' : ''}{receiverName}
               </h2>
-              <p className="text-sm text-blue-100 capitalize">{receiverRole}</p>
+              <p className="text-sm text-blue-100">
+                {isReceiverOnline ? 'Online' : 'Offline'} • {receiverRole}
+              </p>
             </div>
           </div>
           <button
@@ -274,7 +325,7 @@ export default function MessagingPanel({
                     return (
                       <div
                         key={message._id}
-                        className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                        className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-4`}
                       >
                         <div
                           className={`max-w-[70%] rounded-2xl px-4 py-2 ${
@@ -283,6 +334,37 @@ export default function MessagingPanel({
                               : 'bg-white text-gray-900 shadow-sm border border-gray-100 rounded-bl-md'
                           }`}
                         >
+                          {message.attachment && (
+                            <a
+                              href={`${process.env.NEXT_PUBLIC_NOTIFICATION_API_URL || 'http://localhost:4003/api'}${message.attachment.fileUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`flex items-center gap-2 p-2 rounded-lg mb-2 ${
+                                isOwnMessage ? 'bg-white/20 hover:bg-white/30' : 'bg-gray-100 hover:bg-gray-200'
+                              }`}
+                            >
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                isOwnMessage ? 'bg-white/20' : 'bg-gray-200'
+                              }`}>
+                                {message.attachment.fileType.startsWith('image/') ? '🖼️' : '📄'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-medium truncate ${
+                                  isOwnMessage ? 'text-white' : 'text-gray-900'
+                                }`}>
+                                  {message.attachment.fileName}
+                                </p>
+                                <p className={`text-xs ${
+                                  isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                                }`}>
+                                  {formatFileSize(message.attachment.fileSize)}
+                                </p>
+                              </div>
+                              <svg className={`w-5 h-5 ${isOwnMessage ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </a>
+                          )}
                           <p className="whitespace-pre-wrap break-words">{message.content}</p>
                           <p
                             className={`text-xs mt-1 ${
@@ -327,7 +409,53 @@ export default function MessagingPanel({
           onSubmit={handleSendMessage}
           className="p-4 bg-white border-t border-gray-100"
         >
-          <div className="flex gap-3">
+          {/* File preview */}
+          {selectedFile && (
+            <div className="mb-3 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xl">
+                  {selectedFile.type.startsWith('image/') ? '🖼️' : '📄'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(selectedFile.size)}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                className="p-1 hover:bg-blue-100 rounded-lg text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+          
+          <div className="flex gap-2">
+            {/* File input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-3 hover:bg-gray-100 rounded-xl transition-colors text-gray-500 hover:text-gray-700"
+              title="Attach file (PDF, JPEG, PNG - max 5MB)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
             <input
               type="text"
               value={newMessage}
@@ -341,7 +469,7 @@ export default function MessagingPanel({
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || sending}
+              disabled={(!newMessage.trim() && !selectedFile) || sending}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2"
             >
               {sending ? (
