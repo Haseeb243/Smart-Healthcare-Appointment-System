@@ -31,6 +31,9 @@ const initSocketServer = (server) => {
       // Join user-specific room
       socket.join(`user:${userId}`);
       console.log(`User ${userId} registered with socket ${socket.id}`);
+      
+      // Broadcast online status
+      broadcastOnlineStatus(userId, true);
     });
 
     // Handle joining appointment chat room
@@ -66,6 +69,8 @@ const initSocketServer = (server) => {
           sockets.delete(socket.id);
           if (sockets.size === 0) {
             userSockets.delete(socket.userId);
+            // Broadcast offline status
+            broadcastOnlineStatus(socket.userId, false);
           }
         }
       }
@@ -117,11 +122,28 @@ const isUserOnline = (userId) => {
   return userSockets.has(userId) && userSockets.get(userId).size > 0;
 };
 
+// Get online status for multiple users
+const getUsersOnlineStatus = (userIds) => {
+  const status = {};
+  userIds.forEach(userId => {
+    status[userId] = isUserOnline(userId);
+  });
+  return status;
+};
+
+// Emit online status change
+const broadcastOnlineStatus = (userId, isOnline) => {
+  if (!io) return;
+  io.emit('user_online_status', { userId, isOnline });
+};
+
 module.exports = {
   initSocketServer,
   sendNotificationToUser,
   sendMessageToAppointment,
   broadcastAppointmentUpdate,
   getConnectedUsersCount,
-  isUserOnline
+  isUserOnline,
+  getUsersOnlineStatus,
+  broadcastOnlineStatus
 };

@@ -8,7 +8,8 @@ const EVENTS = {
   APPOINTMENT_CREATED: 'APPOINTMENT_CREATED',
   APPOINTMENT_APPROVED: 'APPOINTMENT_APPROVED',
   APPOINTMENT_CANCELLED: 'APPOINTMENT_CANCELLED',
-  APPOINTMENT_COMPLETED: 'APPOINTMENT_COMPLETED'
+  APPOINTMENT_COMPLETED: 'APPOINTMENT_COMPLETED',
+  APPOINTMENT_RESCHEDULED: 'APPOINTMENT_RESCHEDULED'
 };
 
 // Channels
@@ -232,12 +233,106 @@ const handleAppointmentCompleted = async (data) => {
   }
 };
 
+const handleAppointmentRescheduled = async (data) => {
+  console.log('📅 NOTIFICATION: Appointment Rescheduled');
+  console.log(`   Patient: ${data.patientName} (${data.patientEmail})`);
+  console.log(`   Doctor: ${data.doctorName}`);
+  console.log(`   Old: ${new Date(data.oldDate).toLocaleDateString()} at ${data.oldTimeSlot}`);
+  console.log(`   New: ${new Date(data.newDate).toLocaleDateString()} at ${data.newTimeSlot}`);
+  console.log(`   Requested by: ${data.requestedBy}`);
+  
+  // Notify the requester that reschedule was approved
+  if (data.requestedBy === 'patient' && data.patientId) {
+    await createNotification(
+      data.patientId,
+      'patient',
+      'APPOINTMENT_RESCHEDULED',
+      'Reschedule Request Approved',
+      `Your reschedule request for appointment with Dr. ${data.doctorName} has been approved. New date: ${new Date(data.newDate).toLocaleDateString()} at ${data.newTimeSlot}`,
+      {
+        appointmentId: data.appointmentId,
+        patientName: data.patientName,
+        doctorName: data.doctorName,
+        date: data.newDate,
+        timeSlot: data.newTimeSlot
+      }
+    );
+  } else if (data.requestedBy === 'doctor' && data.doctorId) {
+    await createNotification(
+      data.doctorId,
+      'doctor',
+      'APPOINTMENT_RESCHEDULED',
+      'Reschedule Request Approved',
+      `Your reschedule request for appointment with ${data.patientName} has been approved. New date: ${new Date(data.newDate).toLocaleDateString()} at ${data.newTimeSlot}`,
+      {
+        appointmentId: data.appointmentId,
+        patientName: data.patientName,
+        doctorName: data.doctorName,
+        date: data.newDate,
+        timeSlot: data.newTimeSlot
+      }
+    );
+  }
+  
+  // Notify the other party about the reschedule
+  if (data.requestedBy === 'patient' && data.doctorId) {
+    await createNotification(
+      data.doctorId,
+      'doctor',
+      'APPOINTMENT_RESCHEDULED',
+      'Appointment Rescheduled',
+      `Your appointment with ${data.patientName} has been rescheduled to ${new Date(data.newDate).toLocaleDateString()} at ${data.newTimeSlot}`,
+      {
+        appointmentId: data.appointmentId,
+        patientName: data.patientName,
+        doctorName: data.doctorName,
+        date: data.newDate,
+        timeSlot: data.newTimeSlot
+      }
+    );
+  } else if (data.requestedBy === 'doctor' && data.patientId) {
+    await createNotification(
+      data.patientId,
+      'patient',
+      'APPOINTMENT_RESCHEDULED',
+      'Appointment Rescheduled',
+      `Your appointment with Dr. ${data.doctorName} has been rescheduled to ${new Date(data.newDate).toLocaleDateString()} at ${data.newTimeSlot}`,
+      {
+        appointmentId: data.appointmentId,
+        patientName: data.patientName,
+        doctorName: data.doctorName,
+        date: data.newDate,
+        timeSlot: data.newTimeSlot
+      }
+    );
+  }
+  
+  // Send emails to both parties
+  if (data.patientEmail) {
+    await sendEmail(data.patientEmail, 'APPOINTMENT_RESCHEDULED', data);
+  }
+  if (data.doctorEmail) {
+    await sendEmail(data.doctorEmail, 'APPOINTMENT_RESCHEDULED', data);
+  }
+  
+  // Broadcast appointment update
+  if (data.appointmentId) {
+    broadcastAppointmentUpdate(data.appointmentId, {
+      status: 'rescheduled',
+      type: 'APPOINTMENT_RESCHEDULED',
+      newDate: data.newDate,
+      newTimeSlot: data.newTimeSlot
+    });
+  }
+};
+
 // Event handlers map
 const eventHandlers = {
   [EVENTS.APPOINTMENT_CREATED]: handleAppointmentCreated,
   [EVENTS.APPOINTMENT_APPROVED]: handleAppointmentApproved,
   [EVENTS.APPOINTMENT_CANCELLED]: handleAppointmentCancelled,
-  [EVENTS.APPOINTMENT_COMPLETED]: handleAppointmentCompleted
+  [EVENTS.APPOINTMENT_COMPLETED]: handleAppointmentCompleted,
+  [EVENTS.APPOINTMENT_RESCHEDULED]: handleAppointmentRescheduled
 };
 
 let subscriber = null;
