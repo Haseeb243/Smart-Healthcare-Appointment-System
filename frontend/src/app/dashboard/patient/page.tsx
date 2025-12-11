@@ -409,7 +409,7 @@ export default function PatientDashboard() {
                                 Message
                               </Button>
                               
-                              {(apt.status === 'approved' || apt.status === 'pending') && !apt.rescheduleRequest?.status !== 'pending' && (
+                              {(apt.status === 'approved' || apt.status === 'pending') && apt.rescheduleRequest?.status !== 'pending' && (
                                 <Button
                                   variant="outline"
                                   size="sm"
