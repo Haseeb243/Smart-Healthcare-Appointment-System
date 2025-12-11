@@ -544,8 +544,8 @@ export default function DoctorDashboard() {
                               </>
                             )}
 
-                            {/* Completed/Cancelled status */}
-                            {(apt.status === 'completed' || apt.status === 'cancelled') && apt.status === 'completed' && (
+                            {/* Calendar links for completed appointments */}
+                            {apt.status === 'completed' && (
                               <CalendarLinks appointmentId={apt._id} />
                             )}
                           </div>
