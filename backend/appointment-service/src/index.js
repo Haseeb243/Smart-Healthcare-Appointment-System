@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const appointmentRoutes = require('./routes/appointments');
-const { initEventPublisher } = require('./events/publisher');
+const { initEventPublisher } = require('./events/publisher-kafka');
 
 const app = express();
 
@@ -40,11 +40,11 @@ const PORT = process.env.PORT || 4002;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/healthcare-appointments';
 
 mongoose.connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('Connected to MongoDB');
     
-    // Initialize event publisher
-    initEventPublisher();
+    // Initialize event publisher (Kafka)
+    await initEventPublisher();
     
     app.listen(PORT, () => {
       console.log(`Appointment Service running on port ${PORT}`);

@@ -1,7 +1,7 @@
 const express = require('express');
 const Appointment = require('../models/Appointment');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const { publishEvent, EVENTS, CHANNELS } = require('../events/publisher');
+const { publishEvent, EVENTS, CHANNELS } = require('../events/publisher-kafka');
 const { generateGoogleCalendarLink, generateICSFile } = require('../utils/calendarUtils');
 
 const router = express.Router();
