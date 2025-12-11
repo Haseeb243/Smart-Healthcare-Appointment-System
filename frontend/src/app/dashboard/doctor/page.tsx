@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment } from '@/lib/api';
+import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment, requestReschedule, approveReschedule, declineReschedule } from '@/lib/api';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { TextArea, Select } from '@/components/ui/Input';
@@ -11,6 +13,8 @@ import { Modal } from '@/components/ui/Modal';
 import { MedicalIcons } from '@/components/ui/Icons';
 import { useToast } from '@/components/ui/Toast';
 import MessagingPanel from '@/components/MessagingPanel';
+import RescheduleModal from '@/components/RescheduleModal';
+import CalendarLinks from '@/components/CalendarLinks';
 
 interface Appointment {
   _id: string;
@@ -22,11 +26,19 @@ interface Appointment {
   reason: string;
   status: 'pending' | 'approved' | 'cancelled' | 'completed';
   notes?: string;
+  rescheduleRequest?: {
+    requestedDate: Date;
+    requestedTimeSlot: string;
+    requestedBy: 'patient' | 'doctor';
+    status: 'pending' | 'approved' | 'declined' | 'none';
+    requestedAt: Date;
+  };
 }
 
 export default function DoctorDashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
@@ -36,10 +48,16 @@ export default function DoctorDashboard() {
   const [notes, setNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [messagingAppointment, setMessagingAppointment] = useState<Appointment | null>(null);
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     loadAppointments();
-  }, []);
+    // Check if there's a tab parameter in URL
+    const tab = searchParams?.get('tab');
+    if (tab && (tab === 'today' || tab === 'upcoming' || tab === 'all' || tab === 'completed')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const loadAppointments = async () => {
     try {
@@ -93,6 +111,39 @@ export default function DoctorDashboard() {
       showToast(error instanceof Error ? error.message : 'Failed to complete appointment', 'error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleRequestReschedule = async (date: string, timeSlot: string) => {
+    if (!rescheduleAppointment) return;
+    
+    try {
+      await requestReschedule(rescheduleAppointment._id, date, timeSlot);
+      showToast('Reschedule request submitted successfully!', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to request reschedule', 'error');
+      throw error;
+    }
+  };
+
+  const handleApproveReschedule = async (id: string) => {
+    try {
+      await approveReschedule(id);
+      showToast('Reschedule request approved!', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to approve reschedule', 'error');
+    }
+  };
+
+  const handleDeclineReschedule = async (id: string) => {
+    try {
+      await declineReschedule(id);
+      showToast('Reschedule request declined', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to decline reschedule', 'error');
     }
   };
 
