@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -36,7 +36,7 @@ interface Appointment {
   };
 }
 
-export default function DoctorDashboard() {
+function DoctorDashboardContent() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const searchParams = useSearchParams();
@@ -553,13 +553,6 @@ export default function DoctorDashboard() {
                       </CardBody>
                     </Card>
                   ))
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  ))
                 )}
               </div>
             </>
@@ -650,8 +643,17 @@ export default function DoctorDashboard() {
             role="doctor"
           />
         )}
-        </div>
       </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function DoctorDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    </div>}>
+      <DoctorDashboardContent />
+    </Suspense>
   );
 }

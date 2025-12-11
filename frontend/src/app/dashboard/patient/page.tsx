@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -47,7 +47,7 @@ const timeSlots = [
   '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'
 ];
 
-export default function PatientDashboard() {
+function PatientDashboardContent() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const searchParams = useSearchParams();
@@ -594,8 +594,17 @@ export default function PatientDashboard() {
             role="patient"
           />
         )}
-        </div>
       </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function PatientDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+    </div>}>
+      <PatientDashboardContent />
+    </Suspense>
   );
 }
