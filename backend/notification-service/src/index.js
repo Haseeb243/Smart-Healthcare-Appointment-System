@@ -4,7 +4,7 @@ const http = require('http');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { initEventSubscriber } = require('./events/subscriber');
+const { initEventSubscriber } = require('./events/subscriber-kafka');
 const { initEmailService } = require('./services/emailService');
 const { initSocketServer } = require('./services/socketService');
 const notificationRoutes = require('./routes/notifications');
@@ -53,7 +53,7 @@ const PORT = process.env.PORT || 4003;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/healthcare-notifications';
 
 mongoose.connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('Connected to MongoDB');
     
     // Initialize email service
@@ -63,12 +63,12 @@ mongoose.connect(MONGODB_URI)
     initSocketServer(server);
     console.log('Socket.IO server initialized');
     
-    // Initialize event subscriber
-    initEventSubscriber();
+    // Initialize event subscriber (Kafka)
+    await initEventSubscriber();
     
     server.listen(PORT, () => {
       console.log(`Notification Service running on port ${PORT}`);
-      console.log('Listening for appointment events...');
+      console.log('Listening for appointment events via Kafka...');
     });
   })
   .catch((error) => {

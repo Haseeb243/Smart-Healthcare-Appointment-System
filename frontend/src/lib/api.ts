@@ -205,6 +205,98 @@ export async function completeAppointment(id: string, notes?: string) {
   return response.json();
 }
 
+// Rate appointment
+export async function rateAppointment(id: string, score: number, comment?: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/rate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ score, comment })
+  });
+
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to submit rating');
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+// Reschedule appointment functions
+export async function requestReschedule(id: string, requestedDate: string, requestedTimeSlot: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/reschedule-request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ requestedDate, requestedTimeSlot }),
+  });
+  
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to request reschedule');
+    throw new Error(message);
+  }
+  
+  return response.json();
+}
+
+export async function approveReschedule(id: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/reschedule-approve`, {
+    method: 'PATCH',
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to approve reschedule');
+    throw new Error(message);
+  }
+  
+  return response.json();
+}
+
+export async function declineReschedule(id: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/reschedule-decline`, {
+    method: 'PATCH',
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    const message = await parseErrorResponse(response, 'Failed to decline reschedule');
+    throw new Error(message);
+  }
+  
+  return response.json();
+}
+
+// Calendar link functions
+export async function getCalendarLinks(id: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/calendar`, {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch calendar links');
+  }
+  
+  return response.json();
+}
+
+export async function downloadCalendarFile(id: string) {
+  const response = await fetch(`${APPOINTMENT_API_URL}/appointments/${id}/calendar/download`, {
+    credentials: 'include',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to download calendar file');
+  }
+  
+  const blob = await response.blob();
+  return blob;
+}
+
 // Notification API functions
 export async function getNotifications(userId: string, limit = 20, unreadOnly = false) {
   const params = new URLSearchParams({ limit: limit.toString() });
@@ -282,14 +374,25 @@ export async function sendMessage(data: {
   receiverId: string;
   receiverName: string;
   content: string;
+  file?: File;
 }) {
+  const formData = new FormData();
+  formData.append('appointmentId', data.appointmentId);
+  formData.append('senderId', data.senderId);
+  formData.append('senderRole', data.senderRole);
+  formData.append('senderName', data.senderName);
+  formData.append('receiverId', data.receiverId);
+  formData.append('receiverName', data.receiverName);
+  formData.append('content', data.content);
+  
+  if (data.file) {
+    formData.append('file', data.file);
+  }
+
   const response = await fetch(`${NOTIFICATION_API_URL}/messages`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     credentials: 'include',
-    body: JSON.stringify(data),
+    body: formData,
   });
   
   if (!response.ok) {

@@ -18,6 +18,7 @@ const notificationSchema = new mongoose.Schema({
       'APPOINTMENT_APPROVED', 
       'APPOINTMENT_CANCELLED',
       'APPOINTMENT_COMPLETED',
+      'APPOINTMENT_RESCHEDULED',
       'NEW_MESSAGE'
     ],
     required: true

@@ -1,4 +1,4 @@
-const Redis = require('ioredis');
+const { Kafka } = require('kafkajs');
 const Notification = require('../models/Notification');
 const { sendEmail } = require('../services/emailService');
 const { sendNotificationToUser, broadcastAppointmentUpdate } = require('../services/socketService');
@@ -12,8 +12,8 @@ const EVENTS = {
   APPOINTMENT_RESCHEDULED: 'APPOINTMENT_RESCHEDULED'
 };
 
-// Channels
-const CHANNELS = {
+// Topics
+const TOPICS = {
   APPOINTMENTS: 'appointments'
 };
 
@@ -335,51 +335,70 @@ const eventHandlers = {
   [EVENTS.APPOINTMENT_RESCHEDULED]: handleAppointmentRescheduled
 };
 
-let subscriber = null;
+let consumer = null;
+let kafka = null;
 
-const initEventSubscriber = () => {
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  subscriber = new Redis(redisUrl);
+const initEventSubscriber = async () => {
+    const kafkaBrokers = (process.env.KAFKA_BROKERS || 'kafka:29092').split(',');
+    console.log('Using Kafka brokers:', kafkaBrokers.join(','));
   
-  subscriber.on('connect', () => {
-    console.log('Event Subscriber connected to Redis');
-  });
-  
-  subscriber.on('error', (err) => {
-    console.error('Redis Subscriber error:', err);
-  });
-
-  // Subscribe to appointment events
-  subscriber.subscribe(CHANNELS.APPOINTMENTS, (err) => {
-    if (err) {
-      console.error('Failed to subscribe to appointments channel:', err);
-    } else {
-      console.log(`Subscribed to ${CHANNELS.APPOINTMENTS} channel`);
+  kafka = new Kafka({
+    clientId: 'notification-service',
+    brokers: kafkaBrokers,
+    retry: {
+      initialRetryTime: 100,
+      retries: 8
     }
   });
-
-  // Handle incoming messages
-  subscriber.on('message', (channel, message) => {
-    try {
-      const event = JSON.parse(message);
-      console.log(`\n[${event.timestamp}] Received event on ${channel}: ${event.type}`);
-      
-      const handler = eventHandlers[event.type];
-      if (handler) {
-        handler(event.data);
-      } else {
-        console.log(`No handler for event type: ${event.type}`);
+  
+  consumer = kafka.consumer({ groupId: 'notification-service-group' });
+  
+  try {
+    await consumer.connect();
+    console.log('Event Subscriber connected to Kafka');
+    
+    // Subscribe to appointments topic
+    await consumer.subscribe({ topic: TOPICS.APPOINTMENTS, fromBeginning: false });
+    console.log(`Subscribed to topic: ${TOPICS.APPOINTMENTS}`);
+    
+    // Start consuming messages
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message }) => {
+        try {
+          const event = JSON.parse(message.value.toString());
+          console.log(`\n[${event.timestamp}] Received event from topic ${topic}: ${event.type}`);
+          
+          const handler = eventHandlers[event.type];
+          if (handler) {
+            await handler(event.data);
+          } else {
+            console.log(`No handler for event type: ${event.type}`);
+          }
+        } catch (error) {
+          console.error('Error processing event:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error processing event:', error);
-    }
-  });
+    });
+    
+    console.log('Kafka consumer is now listening for events...');
+  } catch (error) {
+    console.error('Kafka Consumer connection error:', error);
+    throw error;
+  }
+  
+  return consumer;
+};
 
-  return subscriber;
+const disconnectSubscriber = async () => {
+  if (consumer) {
+    await consumer.disconnect();
+    console.log('Kafka Consumer disconnected');
+  }
 };
 
 module.exports = {
   initEventSubscriber,
+  disconnectSubscriber,
   EVENTS,
-  CHANNELS
+  TOPICS
 };

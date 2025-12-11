@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment } from '@/lib/api';
+import { getDoctorAppointments, approveAppointment, cancelAppointment, completeAppointment, requestReschedule, approveReschedule, declineReschedule } from '@/lib/api';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { TextArea, Select } from '@/components/ui/Input';
@@ -11,6 +13,9 @@ import { Modal } from '@/components/ui/Modal';
 import { MedicalIcons } from '@/components/ui/Icons';
 import { useToast } from '@/components/ui/Toast';
 import MessagingPanel from '@/components/MessagingPanel';
+import RescheduleModal from '@/components/RescheduleModal';
+import CalendarLinks from '@/components/CalendarLinks';
+import { SkeletonList, SkeletonStats } from '@/components/ui/Skeleton';
 
 interface Appointment {
   _id: string;
@@ -22,11 +27,24 @@ interface Appointment {
   reason: string;
   status: 'pending' | 'approved' | 'cancelled' | 'completed';
   notes?: string;
+  rescheduleRequest?: {
+    requestedDate: Date;
+    requestedTimeSlot: string;
+    requestedBy: 'patient' | 'doctor';
+    status: 'pending' | 'approved' | 'declined' | 'none';
+    requestedAt: Date;
+  };
+  rating?: {
+    score: number;
+    comment?: string;
+    ratedAt?: string;
+  };
 }
 
-export default function DoctorDashboard() {
+function DoctorDashboardContent() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
@@ -36,10 +54,16 @@ export default function DoctorDashboard() {
   const [notes, setNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [messagingAppointment, setMessagingAppointment] = useState<Appointment | null>(null);
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     loadAppointments();
-  }, []);
+    // Check if there's a tab parameter in URL
+    const tab = searchParams?.get('tab');
+    if (tab && (tab === 'today' || tab === 'upcoming' || tab === 'all' || tab === 'completed')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const loadAppointments = async () => {
     try {
@@ -93,6 +117,39 @@ export default function DoctorDashboard() {
       showToast(error instanceof Error ? error.message : 'Failed to complete appointment', 'error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleRequestReschedule = async (date: string, timeSlot: string) => {
+    if (!rescheduleAppointment) return;
+    
+    try {
+      await requestReschedule(rescheduleAppointment._id, date, timeSlot);
+      showToast('Reschedule request submitted successfully!', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to request reschedule', 'error');
+      throw error;
+    }
+  };
+
+  const handleApproveReschedule = async (id: string) => {
+    try {
+      await approveReschedule(id);
+      showToast('Reschedule request approved!', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to approve reschedule', 'error');
+    }
+  };
+
+  const handleDeclineReschedule = async (id: string) => {
+    try {
+      await declineReschedule(id);
+      showToast('Reschedule request declined', 'success');
+      loadAppointments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to decline reschedule', 'error');
     }
   };
 
@@ -154,55 +211,54 @@ export default function DoctorDashboard() {
     return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   };
 
+  const ratings = appointments.filter(a => a.status === 'completed' && (a as any).rating?.score);
+  const averageRating = ratings.length
+    ? (ratings.reduce((sum, a: any) => sum + (a.rating?.score || 0), 0) / ratings.length).toFixed(2)
+    : '—';
+
   const stats = {
     total: appointments.length,
     pending: appointments.filter(a => a.status === 'pending').length,
     approved: appointments.filter(a => a.status === 'approved').length,
     completed: appointments.filter(a => a.status === 'completed').length,
     today: todayAppointments.length,
+    ratingAvg: averageRating,
   };
 
   const filteredAppointments = getFilteredAppointments();
 
   return (
     <ProtectedRoute allowedRoles={['doctor']}>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-          <div className="max-w-7xl mx-auto px-4 py-8">
+      <DashboardLayout role="doctor">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold">Welcome, Dr. {user?.name}! 👨‍⚕️</h1>
-                <p className="text-indigo-100 mt-1">
+                <h1 className="text-3xl font-bold text-gray-900">Welcome, Dr. {user?.name}! 👨‍⚕️</h1>
+                <p className="text-gray-600 mt-1">
                   {user?.specialization && `${user.specialization} Specialist • `}
                   {todayAppointments.length} appointments today
                 </p>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                  <span className="text-sm">Online</span>
-                </div>
-              </div>
             </div>
           </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto px-4 py-8">
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+            <div className="space-y-8">
+              <SkeletonStats />
+              <SkeletonList count={3} />
             </div>
           ) : (
             <>
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8 -mt-12">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
                 {[
                   { label: 'Today', value: stats.today, icon: '📅', color: 'from-blue-500 to-blue-600' },
                   { label: 'Total', value: stats.total, icon: '📊', color: 'from-gray-500 to-gray-600' },
                   { label: 'Pending', value: stats.pending, icon: '⏳', color: 'from-yellow-500 to-amber-600' },
                   { label: 'Approved', value: stats.approved, icon: '✅', color: 'from-green-500 to-emerald-600' },
                   { label: 'Completed', value: stats.completed, icon: '🎉', color: 'from-purple-500 to-indigo-600' },
+                  { label: 'Avg Rating', value: stats.ratingAvg, icon: '⭐', color: 'from-amber-500 to-orange-500' },
                 ].map((stat, index) => (
                   <Card key={index} className="overflow-hidden">
                     <div className={`h-1 bg-gradient-to-r ${stat.color}`}></div>
@@ -354,45 +410,108 @@ export default function DoctorDashboard() {
                   filteredAppointments.map((apt) => (
                     <Card key={apt._id} hover>
                       <CardBody>
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                          <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-                              {apt.patientName.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 flex-wrap">
-                                <h3 className="font-bold text-gray-900 text-lg">{apt.patientName}</h3>
-                                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
-                                  {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
-                                </span>
+                        <div className="space-y-4">
+                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                            <div className="flex items-start gap-4 flex-1">
+                              <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
+                                {apt.patientName.charAt(0)}
                               </div>
-                              <p className="text-sm text-gray-500">{apt.patientEmail}</p>
-                              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600 flex-wrap">
-                                <span className="flex items-center gap-1">
-                                  <MedicalIcons.Calendar />
-                                  {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <MedicalIcons.Clock />
-                                  {apt.timeSlot}
-                                </span>
-                              </div>
-                              <div className="mt-2 p-3 bg-gray-50 rounded-xl">
-                                <p className="text-sm">
-                                  <span className="font-medium text-gray-700">Reason:</span>{' '}
-                                  <span className="text-gray-600">{apt.reason}</span>
-                                </p>
-                                {apt.notes && (
-                                  <p className="text-sm mt-1">
-                                    <span className="font-medium text-blue-700">Your Notes:</span>{' '}
-                                    <span className="text-blue-600">{apt.notes}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <h3 className="font-bold text-gray-900 text-lg">{apt.patientName}</h3>
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(apt.status)}`}>
+                                    {getStatusIcon(apt.status)} {apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-500">{apt.patientEmail}</p>
+                                <div className="flex items-center gap-4 mt-2 text-sm text-gray-600 flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <MedicalIcons.Calendar />
+                                    {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <MedicalIcons.Clock />
+                                    {apt.timeSlot}
+                                  </span>
+                                </div>
+                                <div className="mt-2 p-3 bg-gray-50 rounded-xl">
+                                  <p className="text-sm">
+                                    <span className="font-medium text-gray-700">Reason:</span>{' '}
+                                    <span className="text-gray-600">{apt.reason}</span>
                                   </p>
+                                  {apt.notes && (
+                                    <p className="text-sm mt-1">
+                                      <span className="font-medium text-blue-700">Your Notes:</span>{' '}
+                                      <span className="text-blue-600">{apt.notes}</span>
+                                    </p>
+                                  )}
+                                  {apt.status === 'completed' && (
+                                    <div className="text-sm mt-2 text-gray-700 flex items-center gap-2 flex-wrap">
+                                      {apt.rating?.score ? (
+                                        <>
+                                          <span className="text-yellow-500">
+                                            {[1,2,3,4,5].map((n) => (
+                                              <span key={n}>{n <= apt.rating!.score ? '★' : '☆'}</span>
+                                            ))}
+                                          </span>
+                                          {apt.rating.comment && (
+                                            <span className="text-gray-600 italic">“{apt.rating.comment}”</span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <span className="text-gray-500">Awaiting patient rating</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Reschedule Request Alert */}
+                                {apt.rescheduleRequest && apt.rescheduleRequest.status === 'pending' && (
+                                  <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                    <p className="text-sm font-medium text-yellow-900 mb-2">
+                                      📅 Reschedule Request from Patient
+                                    </p>
+                                    <p className="text-xs text-yellow-800 mb-2">
+                                      New time: {new Date(apt.rescheduleRequest.requestedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} at {apt.rescheduleRequest.requestedTimeSlot}
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <Button 
+                                        size="sm" 
+                                        onClick={() => handleApproveReschedule(apt._id)}
+                                        className="bg-green-600 hover:bg-green-700"
+                                      >
+                                        ✓ Approve
+                                      </Button>
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        onClick={() => handleDeclineReschedule(apt._id)}
+                                      >
+                                        ✕ Decline
+                                      </Button>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap">
+                          {/* Action Buttons */}
+                          <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
+                            {/* Message button - always visible */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setMessagingAppointment(apt)}
+                              className="flex items-center gap-1"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              Message
+                            </Button>
+
+                            {/* Pending appointment actions */}
                             {apt.status === 'pending' && (
                               <>
                                 <Button
@@ -412,19 +531,10 @@ export default function DoctorDashboard() {
                                 </Button>
                               </>
                             )}
+
+                            {/* Approved appointment actions */}
                             {apt.status === 'approved' && (
                               <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setMessagingAppointment(apt)}
-                                  className="flex items-center gap-1"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                  </svg>
-                                  Message
-                                </Button>
                                 <Button
                                   variant="primary"
                                   size="sm"
@@ -435,6 +545,25 @@ export default function DoctorDashboard() {
                                 >
                                   ✓ Complete
                                 </Button>
+                                
+                                {/* Calendar Links */}
+                                <CalendarLinks appointmentId={apt._id} />
+                                
+                                {/* Reschedule button if no pending request */}
+                                {apt.rescheduleRequest?.status !== 'pending' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setRescheduleAppointment(apt)}
+                                    className="flex items-center gap-1"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    Reschedule
+                                  </Button>
+                                )}
+
                                 <Button
                                   variant="danger"
                                   size="sm"
@@ -444,10 +573,10 @@ export default function DoctorDashboard() {
                                 </Button>
                               </>
                             )}
-                            {(apt.status === 'completed' || apt.status === 'cancelled') && (
-                              <span className="text-sm text-gray-500 italic">
-                                {apt.status === 'completed' ? 'Session completed' : 'Appointment was cancelled'}
-                              </span>
+
+                            {/* Calendar links for completed appointments */}
+                            {apt.status === 'completed' && (
+                              <CalendarLinks appointmentId={apt._id} />
                             )}
                           </div>
                         </div>
@@ -530,7 +659,31 @@ export default function DoctorDashboard() {
             onClose={() => setMessagingAppointment(null)}
           />
         )}
-      </div>
+
+        {/* Reschedule Modal */}
+        {rescheduleAppointment && (
+          <RescheduleModal
+            isOpen={!!rescheduleAppointment}
+            onClose={() => setRescheduleAppointment(null)}
+            onSubmit={handleRequestReschedule}
+            appointmentId={rescheduleAppointment._id}
+            currentDate={rescheduleAppointment.date}
+            currentTimeSlot={rescheduleAppointment.timeSlot}
+            patientName={rescheduleAppointment.patientName}
+            role="doctor"
+          />
+        )}
+      </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function DoctorDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    </div>}>
+      <DoctorDashboardContent />
+    </Suspense>
   );
 }

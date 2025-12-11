@@ -1,7 +1,10 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const Message = require('../models/Message');
 const Notification = require('../models/Notification');
 const { sendMessageToAppointment, sendNotificationToUser } = require('../services/socketService');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -28,8 +31,8 @@ router.get('/appointment/:appointmentId', async (req, res) => {
   }
 });
 
-// Send a message
-router.post('/', async (req, res) => {
+// Send a message (with optional file attachment)
+router.post('/', upload.single('file'), async (req, res) => {
   try {
     const { 
       appointmentId, 
@@ -46,16 +49,28 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Create message
-    const message = new Message({
+    // Prepare message data
+    const messageData = {
       appointmentId,
       senderId,
       senderRole,
       senderName,
       receiverId,
       content: content.trim()
-    });
+    };
 
+    // Add attachment info if file was uploaded
+    if (req.file) {
+      messageData.attachment = {
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype,
+        fileSize: req.file.size,
+        fileUrl: `/api/messages/files/${req.file.filename}`
+      };
+    }
+
+    // Create message
+    const message = new Message(messageData);
     await message.save();
 
     // Send real-time message via socket
@@ -67,17 +82,22 @@ router.post('/', async (req, res) => {
       senderName: message.senderName,
       receiverId: message.receiverId,
       content: message.content,
+      attachment: message.attachment,
       read: message.read,
       createdAt: message.createdAt
     });
 
     // Create notification for receiver
+    const notificationMessage = req.file 
+      ? `${senderName} sent a file: ${req.file.originalname}`
+      : `${senderName}: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`;
+
     const notification = new Notification({
       userId: receiverId,
       userRole: senderRole === 'patient' ? 'doctor' : 'patient',
       type: 'NEW_MESSAGE',
       title: 'New Message',
-      message: `${senderName}: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`,
+      message: notificationMessage,
       data: {
         appointmentId,
         patientName: senderRole === 'patient' ? senderName : receiverName,
@@ -100,6 +120,12 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({ message: message.toObject() });
   } catch (error) {
+    // Clean up uploaded file if message creation failed
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+    }
     console.error('Error sending message:', error);
     res.status(500).json({ message: 'Error sending message', error: error.message });
   }
@@ -141,6 +167,25 @@ router.get('/unread/:userId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching unread count:', error);
     res.status(500).json({ message: 'Error fetching unread count', error: error.message });
+  }
+});
+
+// Download/serve attachment file
+router.get('/files/:filename', (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, '../../uploads', filename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+
+    // Send file
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(500).json({ message: 'Error serving file', error: error.message });
   }
 });
 

@@ -28,6 +28,12 @@ const messageSchema = new mongoose.Schema({
     required: true,
     maxlength: 2000
   },
+  attachment: {
+    fileName: String,
+    fileType: String,
+    fileSize: Number,
+    fileUrl: String
+  },
   read: {
     type: Boolean,
     default: false

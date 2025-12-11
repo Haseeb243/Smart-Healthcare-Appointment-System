@@ -46,6 +46,25 @@ const appointmentSchema = new mongoose.Schema({
   notes: {
     type: String
   },
+  rescheduleRequest: {
+    requestedDate: Date,
+    requestedTimeSlot: String,
+    requestedBy: {
+      type: String,
+      enum: ['patient', 'doctor']
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'declined', 'none'],
+      default: 'none'
+    },
+    requestedAt: Date
+  },
+  rating: {
+    score: { type: Number, min: 1, max: 5 },
+    comment: String,
+    ratedAt: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
