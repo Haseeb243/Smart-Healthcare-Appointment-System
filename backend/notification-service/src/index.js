@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const { initEventSubscriber } = require('./events/subscriber-kafka');
 const { initEmailService } = require('./services/emailService');
 const { initSocketServer } = require('./services/socketService');
+const { initAuthClient } = require('./grpc/authClient');
 const notificationRoutes = require('./routes/notifications');
 const messageRoutes = require('./routes/messages');
 
@@ -62,6 +63,9 @@ mongoose.connect(MONGODB_URI)
     // Initialize Socket.IO server
     initSocketServer(server);
     console.log('Socket.IO server initialized');
+    
+    // Initialize gRPC client for auth service
+    initAuthClient();
     
     // Initialize event subscriber (Kafka)
     await initEventSubscriber();

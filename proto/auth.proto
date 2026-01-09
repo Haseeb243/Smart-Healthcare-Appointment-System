@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package auth;
+
+// Auth Service - Provides authentication and authorization via RPC
+service AuthService {
+  // Verify JWT token and return user information
+  rpc VerifyToken (VerifyTokenRequest) returns (VerifyTokenResponse);
+  
+  // Get user information by user ID
+  rpc GetUser (GetUserRequest) returns (GetUserResponse);
+  
+  // Get doctor information by doctor ID
+  rpc GetDoctor (GetDoctorRequest) returns (GetDoctorResponse);
+}
+
+// Request to verify a JWT token
+message VerifyTokenRequest {
+  string token = 1;
+}
+
+// Response with verified user information
+message VerifyTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string role = 3;
+  string email = 4;
+  string name = 5;
+  string error_message = 6;
+}
+
+// Request to get user by ID
+message GetUserRequest {
+  string user_id = 1;
+}
+
+// Response with user information
+message GetUserResponse {
+  bool found = 1;
+  string user_id = 2;
+  string name = 3;
+  string email = 4;
+  string role = 5;
+  string error_message = 6;
+}
+
+// Request to get doctor information
+message GetDoctorRequest {
+  string doctor_id = 1;
+}
+
+// Response with doctor information
+message GetDoctorResponse {
+  bool found = 1;
+  string doctor_id = 2;
+  string name = 3;
+  string email = 4;
+  string specialization = 5;
+  string error_message = 6;
+}

@@ -2,11 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copy proto files from root
+COPY proto ./proto
+
+# Copy service files
+COPY backend/appointment-service/package*.json ./
 
 RUN npm install
 
-COPY . .
+COPY backend/appointment-service .
 
 EXPOSE 4002
 

@@ -1,13 +1,14 @@
 const express = require('express');
 const Appointment = require('../models/Appointment');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddlewareRpc, requireRole: requireRoleRpc } = require('../middleware/authRpc');
 const { publishEvent, EVENTS, CHANNELS } = require('../events/publisher-kafka');
 const { generateGoogleCalendarLink, generateICSFile } = require('../utils/calendarUtils');
 
 const router = express.Router();
 
-// Create new appointment (patients only)
-router.post('/', authMiddleware, requireRole('patient'), async (req, res) => {
+// Create new appointment (patients only) - Using RPC authentication
+router.post('/', authMiddlewareRpc, requireRoleRpc('patient'), async (req, res) => {
   try {
     const { doctorId, doctorName, doctorEmail, date, timeSlot, reason, patientName, patientEmail } = req.body;
 
@@ -52,8 +53,8 @@ router.post('/', authMiddleware, requireRole('patient'), async (req, res) => {
   }
 });
 
-// Get appointments for patient
-router.get('/patient', authMiddleware, requireRole('patient'), async (req, res) => {
+// Get appointments for patient - Using RPC authentication
+router.get('/patient', authMiddlewareRpc, requireRoleRpc('patient'), async (req, res) => {
   try {
     const appointments = await Appointment.find({ patientId: req.user.id })
       .sort({ date: -1 });
@@ -63,8 +64,8 @@ router.get('/patient', authMiddleware, requireRole('patient'), async (req, res) 
   }
 });
 
-// Get appointments for doctor
-router.get('/doctor', authMiddleware, requireRole('doctor'), async (req, res) => {
+// Get appointments for doctor - Using RPC authentication
+router.get('/doctor', authMiddlewareRpc, requireRoleRpc('doctor'), async (req, res) => {
   try {
     const appointments = await Appointment.find({ doctorId: req.user.id })
       .sort({ date: -1 });
