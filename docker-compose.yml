@@ -45,8 +45,10 @@ services:
     container_name: healthcare-auth-service
     ports:
       - "4001:4001"
+      - "50051:50051"
     environment:
       - PORT=4001
+      - GRPC_PORT=50051
       - MONGODB_URI=mongodb://mongodb:27017/healthcare-auth
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - FRONTEND_URL=http://localhost:3000
@@ -68,11 +70,13 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/healthcare-appointments
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - KAFKA_BROKERS=kafka:29092
+      - AUTH_GRPC_URL=auth-service:50051
       - FRONTEND_URL=http://localhost:3000
       - NODE_ENV=development
     depends_on:
       - mongodb
       - kafka
+      - auth-service
     networks:
       - healthcare-network
 
@@ -89,11 +93,13 @@ services:
       - PORT=4003
       - MONGODB_URI=mongodb://mongodb:27017/healthcare-notifications
       - KAFKA_BROKERS=kafka:29092
+      - AUTH_GRPC_URL=auth-service:50051
       - FRONTEND_URL=http://localhost:3000
       - NODE_ENV=development
     depends_on:
       - mongodb
       - kafka
+      - auth-service
     networks:
       - healthcare-network
 

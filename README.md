@@ -1,36 +1,68 @@
 # Smart Healthcare Appointment System
 
-A full-stack healthcare appointment system built with microservices architecture, featuring event-driven communication, secure authentication, and protected dashboards.
+A full-stack healthcare appointment system built with **distributed microservices architecture**, featuring **three communication mechanisms**: REST APIs, gRPC for inter-service communication, and Kafka for event-driven messaging.
 
 ## Architecture
 
+### Distributed System Design
+
+This system demonstrates core distributed programming principles:
+
+1. **Client-Server Architecture** - Next.js client communicates via REST APIs
+2. **Service-Oriented Design** - Three independent, loosely coupled microservices
+3. **Multiple Communication Paradigms**:
+   - **REST** - Client-facing HTTP/JSON APIs
+   - **gRPC** - Inter-service RPC calls with Protocol Buffers
+   - **Kafka Pub/Sub** - Asynchronous event-driven messaging
+
 ### Backend Microservices
-1. **Auth Service** (Port 4001)
-   - User registration and login
+
+1. **Auth Service** (Ports: 4001 HTTP, 50051 gRPC)
+   - User registration and login (REST API)
    - JWT authentication with HttpOnly cookies
    - Role-based access control (patient/doctor)
+   - **gRPC Server** - Token verification and user data retrieval
 
 2. **Appointment Service** (Port 4002)
-   - Appointment CRUD operations
+   - Appointment CRUD operations (REST API)
    - Status management (pending, approved, cancelled, completed)
-   - Event publishing for notifications
+   - **gRPC Client** - Authenticates via RPC calls to auth-service
+   - **Kafka Producer** - Publishes appointment events
 
 3. **Notification Service** (Port 4003)
-   - Listens to appointment events via Redis Pub/Sub
-   - Handles notification delivery (console logging for development)
+   - **Kafka Consumer** - Listens to appointment events
+   - Real-time notifications via Socket.IO
+   - Email notifications (configurable)
+   - **gRPC Client** - User data retrieval (optional)
 
 ### Frontend
 - **Next.js 14** with TypeScript and Tailwind CSS
 - Protected routes with middleware
 - Separate dashboards for patients and doctors
+- REST API client for backend communication
 
-### Event-Driven Architecture
-- Redis Pub/Sub for event messaging
+### Communication Mechanisms
+
+#### 1. RESTful Communication (Client ↔ Backend)
+- Standard HTTP methods (GET, POST, PATCH, DELETE)
+- JSON serialization
+- Client unaware of service locations (distribution transparency)
+
+#### 2. gRPC (Inter-Service RPC)
+- Protocol Buffers for interface definition (IDL)
+- Type-safe, binary serialization
+- Auth service provides token verification via RPC
+- See [GRPC_IMPLEMENTATION.md](GRPC_IMPLEMENTATION.md) for details
+
+#### 3. Kafka Pub/Sub (Asynchronous Events)
+- Producer-consumer decoupling
+- Event topics: `appointments`
 - Events: APPOINTMENT_CREATED, APPOINTMENT_APPROVED, APPOINTMENT_CANCELLED, APPOINTMENT_COMPLETED
+- See [KAFKA_MIGRATION_GUIDE.md](KAFKA_MIGRATION_GUIDE.md) for details
 
 ### Database
 - MongoDB for data persistence
-- Separate databases for auth and appointments
+- Separate databases for auth, appointments, and notifications
 
 ## Prerequisites
 - Docker and Docker Compose
@@ -149,12 +181,62 @@ cd frontend && npm run dev
 3. Doctor approves appointment → `APPOINTMENT_APPROVED` event emitted
 4. Notification Service receives event → Logs/sends notification to patient
 
+## Distributed Programming Requirements Compliance
+
+This system fulfills all requirements for a distributed programming final project:
+
+### ✅ High-Level System Requirements
+- **Distributed System**: Multiple independent services running as separate processes
+- **Network Communication**: All components interact over network (HTTP, gRPC, Kafka)
+- **No Shared Memory**: Each service has its own process and memory space
+- **Autonomous Components**: Services can be deployed and scaled independently
+
+### ✅ Client-Server Interaction
+- **Client Component**: Next.js frontend application
+- **HTTP-based APIs**: RESTful endpoints for all client operations
+- **Distribution Transparency**: Client uses environment variables for service URLs
+
+### ✅ Service-Oriented Design
+- **Three Independent Services**: Auth, Appointment, Notification
+- **Loosely Coupled**: Services communicate only through defined interfaces
+- **Independently Deployable**: Each service has its own Dockerfile and can run standalone
+- **Well-Defined Interfaces**: REST APIs, gRPC proto files, Kafka event schemas
+
+### ✅ Communication Mechanisms
+
+#### a) RESTful Communication ✅
+- Client-facing APIs use REST principles
+- Standard HTTP methods: GET, POST, PATCH, DELETE
+- JSON serialization for all REST APIs
+- Examples: `/api/auth/login`, `/api/appointments`, `/api/notifications`
+
+#### b) Remote Procedure Calls (gRPC) ✅
+- Inter-service communication via gRPC
+- Protocol Buffers IDL: `proto/auth.proto`
+- Type-safe, automatic serialization
+- Auth service provides RPC methods: `VerifyToken`, `GetUser`, `GetDoctor`
+
+#### c) Asynchronous Communication (Pub/Sub) ✅
+- Kafka-based publish-subscribe model
+- Producer: Appointment service publishes events
+- Consumer: Notification service subscribes to events
+- Decoupled in time and space: services don't need to be online simultaneously
+
+### Architecture Documentation
+- [GRPC_IMPLEMENTATION.md](GRPC_IMPLEMENTATION.md) - Detailed gRPC architecture
+- [KAFKA_MIGRATION_GUIDE.md](KAFKA_MIGRATION_GUIDE.md) - Kafka pub/sub implementation
+- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Feature summary
+
 ## Project Structure
 
 ```
+├── proto/
+│   └── auth.proto                    # gRPC service definitions (IDL)
 ├── backend/
 │   ├── auth-service/
 │   │   ├── src/
+│   │   │   ├── grpc/
+│   │   │   │   └── server.js         # gRPC server implementation
 │   │   │   ├── models/User.js
 │   │   │   ├── routes/auth.js
 │   │   │   ├── middleware/auth.js
@@ -163,16 +245,26 @@ cd frontend && npm run dev
 │   │   └── package.json
 │   ├── appointment-service/
 │   │   ├── src/
+│   │   │   ├── grpc/
+│   │   │   │   └── authClient.js     # gRPC client for auth service
 │   │   │   ├── models/Appointment.js
 │   │   │   ├── routes/appointments.js
-│   │   │   ├── middleware/auth.js
-│   │   │   ├── events/publisher.js
+│   │   │   ├── middleware/
+│   │   │   │   ├── auth.js           # Local JWT auth (legacy)
+│   │   │   │   └── authRpc.js        # RPC-based auth (new)
+│   │   │   ├── events/
+│   │   │   │   ├── publisher-kafka.js # Kafka producer
+│   │   │   │   └── publisher.js      # Redis pub (legacy)
 │   │   │   └── index.js
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   └── notification-service/
 │       ├── src/
-│       │   ├── events/subscriber.js
+│       │   ├── grpc/
+│       │   │   └── authClient.js     # gRPC client for auth service
+│       │   ├── events/
+│       │   │   ├── subscriber-kafka.js # Kafka consumer
+│       │   │   └── subscriber.js     # Redis sub (legacy)
 │       │   └── index.js
 │       ├── Dockerfile
 │       └── package.json

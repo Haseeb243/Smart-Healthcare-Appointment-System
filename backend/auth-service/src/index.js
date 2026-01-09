@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
+const { startGrpcServer } = require('./grpc/server');
 
 const app = express();
 
@@ -52,6 +53,10 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/health
 mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
+    
+    // Start gRPC server for inter-service communication
+    startGrpcServer();
+    
     app.listen(PORT, () => {
       console.log(`Auth Service running on port ${PORT}`);
     });

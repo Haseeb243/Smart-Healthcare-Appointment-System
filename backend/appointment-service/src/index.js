@@ -6,6 +6,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const appointmentRoutes = require('./routes/appointments');
 const { initEventPublisher } = require('./events/publisher-kafka');
+const { initAuthClient } = require('./grpc/authClient');
 
 const app = express();
 
@@ -45,6 +46,9 @@ mongoose.connect(MONGODB_URI)
     
     // Initialize event publisher (Kafka)
     await initEventPublisher();
+    
+    // Initialize gRPC client for auth service
+    initAuthClient();
     
     app.listen(PORT, () => {
       console.log(`Appointment Service running on port ${PORT}`);
