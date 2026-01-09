@@ -2,8 +2,8 @@ const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const path = require('path');
 
-// Load proto file
-const PROTO_PATH = path.join(__dirname, '../../../proto/auth.proto');
+// Load proto file - resolve from project root for better maintainability
+const PROTO_PATH = process.env.PROTO_PATH || path.join(__dirname, '../../../../proto/auth.proto');
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
   longs: String,
@@ -31,6 +31,7 @@ const initAuthClient = () => {
 };
 
 // Verify token via gRPC
+// Note: proto-loader automatically converts PascalCase RPC names (VerifyToken) to camelCase (verifyToken)
 const verifyTokenViaRpc = (token) => {
   return new Promise((resolve, reject) => {
     if (!authClient) {

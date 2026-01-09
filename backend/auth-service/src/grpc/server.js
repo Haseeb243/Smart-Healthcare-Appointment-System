@@ -4,8 +4,8 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// Load proto file
-const PROTO_PATH = path.join(__dirname, '../../../proto/auth.proto');
+// Load proto file - resolve from project root for better maintainability
+const PROTO_PATH = process.env.PROTO_PATH || path.join(__dirname, '../../../../proto/auth.proto');
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
   longs: String,
