@@ -40,8 +40,8 @@ services:
 
   auth-service:
     build:
-      context: ./backend/auth-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./backend/auth-service/Dockerfile
     container_name: healthcare-auth-service
     ports:
       - "4001:4001"
@@ -60,8 +60,8 @@ services:
 
   appointment-service:
     build:
-      context: ./backend/appointment-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./backend/appointment-service/Dockerfile
     container_name: healthcare-appointment-service
     ports:
       - "4002:4002"
@@ -82,8 +82,8 @@ services:
 
   notification-service:
     build:
-      context: ./backend/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./backend/notification-service/Dockerfile
     container_name: healthcare-notification-service
     ports:
       - "4003:4003"
