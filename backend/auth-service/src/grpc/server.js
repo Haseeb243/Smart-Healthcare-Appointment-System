@@ -4,7 +4,9 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// Load proto file - use environment variable or resolve from project root
+// Load proto file - resolves from working directory (/app in Docker)
+// In Docker: /app/proto/auth.proto (copied by Dockerfile)
+// Locally: <project-root>/proto/auth.proto
 const PROTO_PATH = process.env.PROTO_PATH || path.resolve(process.cwd(), 'proto/auth.proto');
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
